@@ -20,7 +20,8 @@ export async function POST(request: Request) {
         ? lastMessage.content.toLowerCase().trim()
         : "";
 
-    let answer = "Hello! 👋 How can I help you?";
+    let answer =
+      "Hello! 👋 I'm your chatbot. Ask me about Python, SQL, Data Science, Power BI, Tableau, or Machine Learning.";
 
     if (userMessage.includes("hello") || userMessage.includes("hi")) {
       answer = "Hello! 👋 I'm your chatbot. How can I help you today?";
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
         "Python is a programming language widely used for Data Science, Machine Learning, automation, and web development.";
     } else if (userMessage.includes("sql")) {
       answer =
-        "SQL is used to store, retrieve, filter, and analyze data in relational databases. Important topics include SELECT, WHERE, JOIN, GROUP BY, and ORDER BY.";
+        "SQL is used to store, retrieve, filter, and analyze data in databases. Important topics include SELECT, WHERE, JOIN, GROUP BY, and ORDER BY.";
     } else if (
       userMessage.includes("data science") ||
       userMessage.includes("data scientist")
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
         "Data Science combines programming, statistics, data analysis, visualization, and Machine Learning to extract useful information from data.";
     } else if (userMessage.includes("power bi")) {
       answer =
-        "Power BI is a Microsoft business-intelligence tool used to connect, clean, model, visualize, and analyze data.";
+        "Power BI is a business-intelligence tool used to connect, clean, model, visualize, and analyze data.";
     } else if (userMessage.includes("tableau")) {
       answer =
         "Tableau is a data-visualization tool used to create interactive charts, dashboards, and reports.";
