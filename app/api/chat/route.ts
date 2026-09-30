@@ -1,23 +1,26 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
-const apiKey = process.env.OPENAI_API_KEY;
-
-if (!apiKey) {
-  throw new Error("OPENAI_API_KEY is not configured");
-}
-
-const client = new OpenAI({
-  apiKey,
-});
-
 export async function POST(request: Request) {
   try {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY is missing on Vercel." },
+        { status: 500 }
+      );
+    }
+
+    const client = new OpenAI({
+      apiKey,
+    });
+
     const { messages } = await request.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
-        { error: "Invalid messages" },
+        { error: "Invalid messages." },
         { status: 400 }
       );
     }
@@ -25,7 +28,7 @@ export async function POST(request: Request) {
     const response = await client.responses.create({
       model: "gpt-5.6-luna",
       instructions:
-        "You are a helpful AI assistant. Answer clearly, accurately and naturally. Explain difficult topics in simple language when appropriate. Do not make up information.",
+        "You are a helpful AI assistant. Answer clearly, accurately and naturally. Do not make up information.",
       input: messages,
     });
 
@@ -36,7 +39,12 @@ export async function POST(request: Request) {
     console.error("OpenAI API error:", error);
 
     return NextResponse.json(
-      { error: "Failed to generate response." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown OpenAI API error",
+      },
       { status: 500 }
     );
   }
