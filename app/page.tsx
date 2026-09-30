@@ -16,7 +16,7 @@ const MODEL = "Llama-3.2-1B-Instruct-q4f32_1-MLC";
 const SYSTEM_PROMPT = `
 You are My AI, a helpful, friendly and intelligent AI assistant.
 
-Answer questions naturally and directly.
+Answer the user's questions naturally and directly.
 
 IMPORTANT:
 
@@ -26,14 +26,14 @@ IMPORTANT:
 * Do not repeat the user's question.
 * Do not introduce yourself unless asked.
 * Do not claim to have internet access.
-* Give accurate and useful answers.
+* Give useful and understandable answers.
 
 EXPLANATIONS:
 
-* Start simple.
+* Start with a simple explanation.
 * Use easy language.
 * Give examples when useful.
-* If the user asks "explain like I'm 5", explain using extremely simple language.
+* If the user asks "explain like I'm 5", make the explanation extremely simple.
 * If the user asks for detail, provide a detailed explanation.
 
 TECHNICAL TOPICS:
@@ -59,7 +59,7 @@ export default function Home() {
 const [messages, setMessages] = useState<Message[]>([]);
 const [input, setInput] = useState("");
 const [loading, setLoading] = useState(false);
-const [status, setStatus] = useState("Loading AI...");
+const [status, setStatus] = useState("Loading My AI...");
 const [ready, setReady] = useState(false);
 
 const engineRef = useRef<MLCEngine | null>(null);
@@ -86,7 +86,7 @@ async function loadAI() {
     setReady(true);
     setStatus("AI Ready");
   } catch (error) {
-    console.error(error);
+    console.error("AI loading error:", error);
 
     if (!cancelled) {
       setStatus(
@@ -109,12 +109,7 @@ async function sendMessage() {
 const text = input.trim();
 
 ```
-if (
-  !text ||
-  loading ||
-  !ready ||
-  !engineRef.current
-) {
+if (!text || loading || !ready || !engineRef.current) {
   return;
 }
 
@@ -123,18 +118,14 @@ const userMessage: Message = {
   content: text,
 };
 
-const updatedMessages = [
-  ...messages,
-  userMessage,
-];
+const updatedMessages = [...messages, userMessage];
 
 setMessages(updatedMessages);
 setInput("");
 setLoading(true);
 
 try {
-  const recentMessages =
-    updatedMessages.slice(-8);
+  const recentMessages = updatedMessages.slice(-8);
 
   const response =
     await engineRef.current.chat.completions.create({
@@ -182,10 +173,7 @@ try {
 function handleKeyDown(
 event: React.KeyboardEvent<HTMLTextAreaElement>
 ) {
-if (
-event.key === "Enter" &&
-!event.shiftKey
-) {
+if (event.key === "Enter" && !event.shiftKey) {
 event.preventDefault();
 sendMessage();
 }
@@ -203,20 +191,20 @@ setInput(text);
 return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
 ```
-  {/* TOP NAVBAR */}
-  <header className="h-16 border-b border-white/10 bg-[#0b0d10]/95 backdrop-blur flex items-center justify-between px-5 sm:px-8">
+  {/* HEADER */}
+  <header className="h-16 shrink-0 border-b border-white/10 bg-[#0b0d10] flex items-center justify-between px-5 sm:px-8">
 
-    {/* LOGO */}
+    {/* MY AI LOGO */}
     <button
       onClick={newChat}
-      className="flex items-center gap-3 group"
+      className="flex items-center gap-3 hover:opacity-90 transition"
     >
-      <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center text-black font-bold text-lg shadow-lg">
+      <div className="w-9 h-9 rounded-xl bg-white text-black flex items-center justify-center font-bold text-lg">
         M
       </div>
 
       <div className="text-left">
-        <h1 className="font-semibold text-[17px] tracking-tight">
+        <h1 className="font-semibold text-[17px]">
           My AI
         </h1>
 
@@ -226,16 +214,13 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
       </div>
     </button>
 
-    {/* RIGHT SIDE */}
+    {/* HEADER RIGHT */}
     <div className="flex items-center gap-3">
 
       <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
-
         <span
           className={`w-2 h-2 rounded-full ${
-            ready
-              ? "bg-green-400"
-              : "bg-yellow-400"
+            ready ? "bg-green-400" : "bg-yellow-400"
           }`}
         />
 
@@ -254,7 +239,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
     </div>
   </header>
 
-  {/* CHAT AREA */}
+  {/* MAIN CHAT AREA */}
   <section className="flex-1 overflow-y-auto">
 
     {messages.length === 0 ? (
@@ -264,11 +249,12 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
         <div className="w-full max-w-3xl text-center">
 
-          {/* ICON */}
-          <div className="mx-auto mb-7 w-16 h-16 rounded-2xl bg-white flex items-center justify-center text-black text-2xl font-bold shadow-2xl">
+          {/* LARGE LOGO */}
+          <div className="mx-auto mb-7 w-16 h-16 rounded-2xl bg-white text-black flex items-center justify-center text-2xl font-bold shadow-2xl">
             M
           </div>
 
+          {/* TITLE */}
           <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-4">
             How can I help you?
           </h2>
@@ -277,6 +263,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
             Ask My AI anything. Get simple, clear and useful answers.
           </p>
 
+          {/* LOADING */}
           {!ready ? (
 
             <div className="max-w-md mx-auto">
@@ -285,7 +272,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
                 <div className="flex items-center justify-center gap-3">
 
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" />
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
@@ -307,7 +294,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
           ) : (
 
-            /* SUGGESTIONS */
+            /* SUGGESTION CARDS */
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
 
               <button
@@ -316,7 +303,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                     "Explain machine learning like I'm 5"
                   )
                 }
-                className="group text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
+                className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
                 <div className="text-lg mb-2">
                   🧠
@@ -337,7 +324,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                     "Write a simple Python program and explain it"
                   )
                 }
-                className="group text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
+                className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
                 <div className="text-lg mb-2">
                   💻
@@ -358,7 +345,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                     "Explain Data Science in simple language"
                   )
                 }
-                className="group text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
+                className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
                 <div className="text-lg mb-2">
                   📊
@@ -379,7 +366,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                     "Help me understand SQL joins with examples"
                   )
                 }
-                className="group text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
+                className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
                 <div className="text-lg mb-2">
                   📚
@@ -402,42 +389,43 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
     ) : (
 
-      /* MESSAGES */
+      /* CHAT MESSAGES */
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
 
-        {messages.map(
-          (message, index) => (
+        {messages.map((message, index) => (
 
+          <div
+            key={index}
+            className={`flex gap-3 mb-7 ${
+              message.role === "user"
+                ? "justify-end"
+                : "justify-start"
+            }`}
+          >
+
+            {/* AI ICON */}
+            {message.role === "assistant" && (
+              <div className="shrink-0 w-8 h-8 rounded-lg bg-white text-black flex items-center justify-center font-bold text-sm mt-1">
+                M
+              </div>
+            )}
+
+            {/* MESSAGE */}
             <div
-              key={index}
-              className={`flex gap-3 mb-7 ${
+              className={`max-w-[85%] px-4 py-3.5 rounded-2xl whitespace-pre-wrap leading-7 text-[15px] ${
                 message.role === "user"
-                  ? "justify-end"
-                  : "justify-start"
+                  ? "bg-[#252a31] border border-white/5"
+                  : "bg-[#12151a] border border-white/5"
               }`}
             >
-
-              {message.role === "assistant" && (
-                <div className="shrink-0 w-8 h-8 rounded-lg bg-white text-black flex items-center justify-center font-bold text-sm mt-1">
-                  M
-                </div>
-              )}
-
-              <div
-                className={`max-w-[85%] px-4 py-3.5 rounded-2xl whitespace-pre-wrap leading-7 text-[15px] ${
-                  message.role === "user"
-                    ? "bg-[#252a31] border border-white/5"
-                    : "bg-[#12151a] border border-white/5"
-                }`}
-              >
-                {message.content}
-              </div>
-
+              {message.content}
             </div>
 
-          )
-        )}
+          </div>
 
+        ))}
+
+        {/* THINKING */}
         {loading && (
 
           <div className="flex gap-3 items-start">
@@ -471,7 +459,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
   </section>
 
   {/* INPUT AREA */}
-  <footer className="sticky bottom-0 bg-[#0b0d10] px-4 sm:px-6 pb-5 pt-3">
+  <footer className="shrink-0 bg-[#0b0d10] px-4 sm:px-6 pb-5 pt-3">
 
     <div className="max-w-3xl mx-auto">
 
