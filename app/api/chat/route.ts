@@ -1,8 +1,14 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
+const apiKey = process.env.OPENAI_API_KEY;
+
+if (!apiKey) {
+  throw new Error("OPENAI_API_KEY is not configured");
+}
+
 const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey,
 });
 
 export async function POST(request: Request) {
@@ -27,7 +33,7 @@ export async function POST(request: Request) {
       answer: response.output_text,
     });
   } catch (error) {
-    console.error(error);
+    console.error("OpenAI API error:", error);
 
     return NextResponse.json(
       { error: "Failed to generate response." },
