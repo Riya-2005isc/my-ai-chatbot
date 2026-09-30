@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-CreateMLCEngine,
-MLCEngine,
-} from "@mlc-ai/web-llm";
+import { CreateMLCEngine, MLCEngine } from "@mlc-ai/web-llm";
 
 type Message = {
 role: "user" | "assistant";
@@ -14,46 +11,44 @@ content: string;
 const MODEL = "Llama-3.2-1B-Instruct-q4f32_1-MLC";
 
 const SYSTEM_PROMPT = `
-You are My AI, a helpful, friendly and intelligent AI assistant.
+You are My AI, a helpful and intelligent AI assistant.
 
 Answer the user's questions naturally and directly.
 
-IMPORTANT:
+Understand:
 
-* Understand spelling mistakes and grammar mistakes.
-* Understand casual English, Hindi and Hinglish.
-* Understand follow-up questions using previous conversation context.
-* Do not repeat the user's question.
-* Do not introduce yourself unless asked.
-* Do not claim to have internet access.
-* Give useful and understandable answers.
+* spelling mistakes
+* grammar mistakes
+* casual English
+* Hindi
+* Hinglish
+* follow-up questions
+* previous conversation context
+
+Do not repeat the user's question.
+Do not unnecessarily introduce yourself.
+Do not claim to have internet access.
 
 EXPLANATIONS:
 
-* Start with a simple explanation.
-* Use easy language.
+* Use simple language.
 * Give examples when useful.
-* If the user asks "explain like I'm 5", make the explanation extremely simple.
-* If the user asks for detail, provide a detailed explanation.
+* If the user says "explain like I'm 5", make it very simple.
+* If the user asks for detail, give a detailed explanation.
 
-TECHNICAL TOPICS:
-You can answer questions about Python, SQL, Data Science,
-Machine Learning, Statistics, Mathematics, Power BI,
-Tableau, Excel, programming and general topics.
+You can help with:
+Python, SQL, Data Science, Machine Learning,
+Statistics, Mathematics, Power BI, Tableau,
+Excel, programming and general topics.
 
-CODE:
+For code:
 
-* Give simple, readable code.
+* Give readable code.
 * Explain important parts.
 * Do not invent libraries or functions.
 
-STYLE:
-
-* Be conversational and helpful.
-* Use headings and bullet points when useful.
-* Keep simple questions concise.
-* Give detailed answers when requested.
-  `;
+Be helpful, clear and conversational.
+`;
 
 export default function Home() {
 const [messages, setMessages] = useState<Message[]>([]);
@@ -86,7 +81,7 @@ async function loadAI() {
     setReady(true);
     setStatus("AI Ready");
   } catch (error) {
-    console.error("AI loading error:", error);
+    console.error(error);
 
     if (!cancelled) {
       setStatus(
@@ -191,10 +186,8 @@ setInput(text);
 return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
 ```
-  {/* HEADER */}
   <header className="h-16 shrink-0 border-b border-white/10 bg-[#0b0d10] flex items-center justify-between px-5 sm:px-8">
 
-    {/* MY AI LOGO */}
     <button
       onClick={newChat}
       className="flex items-center gap-3 hover:opacity-90 transition"
@@ -214,7 +207,6 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
       </div>
     </button>
 
-    {/* HEADER RIGHT */}
     <div className="flex items-center gap-3">
 
       <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
@@ -223,7 +215,6 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
             ready ? "bg-green-400" : "bg-yellow-400"
           }`}
         />
-
         {ready ? "Online" : "Preparing"}
       </div>
 
@@ -239,22 +230,18 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
     </div>
   </header>
 
-  {/* MAIN CHAT AREA */}
   <section className="flex-1 overflow-y-auto">
 
     {messages.length === 0 ? (
 
-      /* WELCOME SCREEN */
       <div className="min-h-[calc(100vh-145px)] flex items-center justify-center px-5">
 
         <div className="w-full max-w-3xl text-center">
 
-          {/* LARGE LOGO */}
           <div className="mx-auto mb-7 w-16 h-16 rounded-2xl bg-white text-black flex items-center justify-center text-2xl font-bold shadow-2xl">
             M
           </div>
 
-          {/* TITLE */}
           <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-4">
             How can I help you?
           </h2>
@@ -263,7 +250,6 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
             Ask My AI anything. Get simple, clear and useful answers.
           </p>
 
-          {/* LOADING */}
           {!ready ? (
 
             <div className="max-w-md mx-auto">
@@ -294,7 +280,6 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
           ) : (
 
-            /* SUGGESTION CARDS */
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
 
               <button
@@ -305,9 +290,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                 }
                 className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
-                <div className="text-lg mb-2">
-                  🧠
-                </div>
+                <div className="text-lg mb-2">🧠</div>
 
                 <div className="font-medium text-sm">
                   Explain a concept
@@ -326,9 +309,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                 }
                 className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
-                <div className="text-lg mb-2">
-                  💻
-                </div>
+                <div className="text-lg mb-2">💻</div>
 
                 <div className="font-medium text-sm">
                   Write code
@@ -347,9 +328,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                 }
                 className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
-                <div className="text-lg mb-2">
-                  📊
-                </div>
+                <div className="text-lg mb-2">📊</div>
 
                 <div className="font-medium text-sm">
                   Learn Data Science
@@ -368,9 +347,7 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
                 }
                 className="text-left border border-white/10 bg-[#12151a] hover:bg-[#191d23] hover:border-white/20 transition rounded-2xl p-4"
               >
-                <div className="text-lg mb-2">
-                  📚
-                </div>
+                <div className="text-lg mb-2">📚</div>
 
                 <div className="font-medium text-sm">
                   Study with My AI
@@ -389,7 +366,6 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
     ) : (
 
-      /* CHAT MESSAGES */
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
 
         {messages.map((message, index) => (
@@ -403,14 +379,12 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
             }`}
           >
 
-            {/* AI ICON */}
             {message.role === "assistant" && (
               <div className="shrink-0 w-8 h-8 rounded-lg bg-white text-black flex items-center justify-center font-bold text-sm mt-1">
                 M
               </div>
             )}
 
-            {/* MESSAGE */}
             <div
               className={`max-w-[85%] px-4 py-3.5 rounded-2xl whitespace-pre-wrap leading-7 text-[15px] ${
                 message.role === "user"
@@ -425,7 +399,6 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
         ))}
 
-        {/* THINKING */}
         {loading && (
 
           <div className="flex gap-3 items-start">
@@ -437,13 +410,9 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
             <div className="bg-[#12151a] border border-white/5 rounded-2xl px-5 py-4">
 
               <div className="flex items-center gap-1.5">
-
                 <span className="w-2 h-2 rounded-full bg-gray-500 animate-bounce" />
-
                 <span className="w-2 h-2 rounded-full bg-gray-500 animate-bounce [animation-delay:150ms]" />
-
                 <span className="w-2 h-2 rounded-full bg-gray-500 animate-bounce [animation-delay:300ms]" />
-
               </div>
 
             </div>
@@ -458,7 +427,6 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
   </section>
 
-  {/* INPUT AREA */}
   <footer className="shrink-0 bg-[#0b0d10] px-4 sm:px-6 pb-5 pt-3">
 
     <div className="max-w-3xl mx-auto">
