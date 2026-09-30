@@ -472,8 +472,4 @@ return ( <main className="min-h-screen bg-[#0b0d10] text-white flex flex-col">
 
   </footer>
 
-</main>
-```
 
-);
-}
