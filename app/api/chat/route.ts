@@ -3,11 +3,12 @@ import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
-    const { messages } = await request.json();
+    const body = await request.json();
+    const messages = body?.messages;
 
-    if (!messages || !Array.isArray(messages)) {
+    if (!Array.isArray(messages)) {
       return NextResponse.json(
-        { error: "Invalid messages." },
+        { error: "Invalid messages format" },
         { status: 400 }
       );
     }
@@ -19,54 +20,49 @@ export async function POST(request: Request) {
         ? lastMessage.content.toLowerCase().trim()
         : "";
 
-    let answer =
-      "I'm a simple AI chatbot running without an external API. Try asking me about Python, SQL, Data Science, Power BI, Tableau, or Machine Learning!";
+    let answer = "Hello! 👋 How can I help you?";
 
     if (userMessage.includes("hello") || userMessage.includes("hi")) {
+      answer = "Hello! 👋 I'm your chatbot. How can I help you today?";
+    } else if (userMessage.includes("python")) {
       answer =
-        "Hello! 👋 I'm your AI chatbot. How can I help you today?";
-    } else if (
-      userMessage.includes("python") ||
-      userMessage.includes("learn python")
-    ) {
-      answer =
-        "Python is a popular programming language used for data analysis, machine learning, automation, web development, and more. For Data Science, start with variables, lists, dictionaries, functions, NumPy, Pandas, and Matplotlib.";
+        "Python is a programming language widely used for Data Science, Machine Learning, automation, and web development.";
     } else if (userMessage.includes("sql")) {
       answer =
-        "SQL is used to work with databases. Important topics include SELECT, WHERE, GROUP BY, ORDER BY, JOINs, subqueries, aggregate functions, and window functions.";
+        "SQL is used to store, retrieve, filter, and analyze data in relational databases. Important topics include SELECT, WHERE, JOIN, GROUP BY, and ORDER BY.";
     } else if (
       userMessage.includes("data science") ||
       userMessage.includes("data scientist")
     ) {
       answer =
-        "Data Science combines statistics, programming, data analysis, machine learning, and visualization to extract useful insights from data.";
+        "Data Science combines programming, statistics, data analysis, visualization, and Machine Learning to extract useful information from data.";
     } else if (userMessage.includes("power bi")) {
       answer =
-        "Power BI is a business intelligence tool used to clean data, create data models, write DAX calculations, and build interactive dashboards.";
+        "Power BI is a Microsoft business-intelligence tool used to connect, clean, model, visualize, and analyze data.";
     } else if (userMessage.includes("tableau")) {
       answer =
-        "Tableau is a data visualization and business intelligence platform. You can use it to connect to datasets, create charts, dashboards, filters, and interactive visualizations.";
+        "Tableau is a data-visualization tool used to create interactive charts, dashboards, and reports.";
     } else if (
       userMessage.includes("machine learning") ||
       userMessage.includes("machine-learning")
     ) {
       answer =
-        "Machine Learning allows computers to learn patterns from data. Common types include supervised learning, unsupervised learning, and reinforcement learning.";
+        "Machine Learning allows computers to learn patterns from data. Common types include supervised learning and unsupervised learning.";
     } else if (
-      userMessage.includes("thank") ||
+      userMessage.includes("thank you") ||
       userMessage.includes("thanks")
     ) {
       answer = "You're welcome! 😊";
     } else if (userMessage.includes("bye")) {
-      answer = "Bye! 👋 Have a great day!";
+      answer = "Goodbye! 👋";
     }
 
     return NextResponse.json({ answer });
   } catch (error) {
-    console.error("Chat error:", error);
+    console.error("Chat route error:", error);
 
     return NextResponse.json(
-      { error: "Something went wrong." },
+      { error: "Unable to process your message." },
       { status: 500 }
     );
   }
