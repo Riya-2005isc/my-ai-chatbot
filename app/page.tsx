@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ChangeEvent,
+  FormEvent,
   useEffect,
   useRef,
   useState,
@@ -10,7 +12,6 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   image?: string;
-  type?: "text" | "image";
 };
 
 type Chat = {
@@ -25,30 +26,27 @@ const STORAGE_KEY = "my-ai-chat-history";
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] =
-    useState<string>("");
+    useState<string | null>(null);
 
   const [input, setInput] = useState("");
   const [selectedImage, setSelectedImage] =
-    useState<string>("");
-
-  const [imageName, setImageName] =
-    useState("");
+    useState<string | null>(null);
 
   const [loading, setLoading] =
     useState(false);
 
-  const [copied, setCopied] =
-    useState<number | null>(null);
+  const [sidebarOpen, setSidebarOpen] =
+    useState(true);
 
   const fileInputRef =
     useRef<HTMLInputElement>(null);
 
-  const textareaRef =
-    useRef<HTMLTextAreaElement>(null);
+  const bottomRef =
+    useRef<HTMLDivElement>(null);
 
-  // --------------------------------
+  // -----------------------------
   // LOAD HISTORY
-  // --------------------------------
+  // -----------------------------
 
   useEffect(() => {
     try {
@@ -58,104 +56,141 @@ export default function Home() {
       if (saved) {
         const parsed = JSON.parse(saved);
 
-        if (Array.isArray(parsed)) {
+        if (
+          Array.isArray(parsed) &&
+          parsed.length > 0
+        ) {
           setChats(parsed);
-
-          if (parsed.length > 0) {
-            setActiveChatId(parsed[0].id);
-          }
+          setActiveChatId(parsed[0].id);
+          return;
         }
       }
     } catch (error) {
       console.error(
-        "Could not load chat history:",
+        "History loading error:",
         error
       );
     }
+
+    createNewChat();
   }, []);
 
-  // --------------------------------
+  // -----------------------------
   // SAVE HISTORY
-  // --------------------------------
+  // -----------------------------
 
   useEffect(() => {
-    try {
+    if (chats.length > 0) {
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify(chats)
       );
-    } catch (error) {
-      console.warn(
-        "Chat history could not be saved:",
-        error
-      );
     }
   }, [chats]);
 
-  // --------------------------------
-  // CREATE CHAT
-  // --------------------------------
+  // -----------------------------
+  // AUTO SCROLL
+  // -----------------------------
 
-  function createChat() {
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [
+    chats,
+    activeChatId,
+    loading,
+  ]);
+
+  // -----------------------------
+  // CURRENT CHAT
+  // -----------------------------
+
+  const activeChat =
+    chats.find(
+      (chat) =>
+        chat.id === activeChatId
+    ) || null;
+
+  // -----------------------------
+  // CREATE CHAT
+  // -----------------------------
+
+  function createNewChat() {
     const newChat: Chat = {
-      id: crypto.randomUUID(),
-      title: "New chat",
+      id:
+        Date.now().toString() +
+        Math.random()
+          .toString(36)
+          .slice(2),
+
+      title: "New conversation",
+
       messages: [],
+
       createdAt: Date.now(),
     };
 
-    setChats((prev) => [
+    setChats((previous) => [
       newChat,
-      ...prev,
+      ...previous,
     ]);
 
     setActiveChatId(newChat.id);
 
     setInput("");
-    setSelectedImage("");
-    setImageName("");
+
+    setSelectedImage(null);
   }
 
-  // --------------------------------
-  // GET ACTIVE CHAT
-  // --------------------------------
-
-  const activeChat = chats.find(
-    (chat) => chat.id === activeChatId
-  );
-
-  const messages =
-    activeChat?.messages || [];
-
-  // --------------------------------
+  // -----------------------------
   // DELETE CHAT
-  // --------------------------------
+  // -----------------------------
 
-  function deleteChat(
-    event: React.MouseEvent,
-    id: string
-  ) {
-    event.stopPropagation();
+  function deleteChat(id: string) {
+    setChats((previous) => {
+      const remaining =
+        previous.filter(
+          (chat) => chat.id !== id
+        );
 
-    const remaining = chats.filter(
-      (chat) => chat.id !== id
-    );
+      if (id === activeChatId) {
+        if (remaining.length > 0) {
+          setActiveChatId(
+            remaining[0].id
+          );
+        } else {
+          const newChat: Chat = {
+            id:
+              Date.now().toString(),
 
-    setChats(remaining);
+            title:
+              "New conversation",
 
-    if (activeChatId === id) {
-      setActiveChatId(
-        remaining[0]?.id || ""
-      );
-    }
+            messages: [],
+
+            createdAt:
+              Date.now(),
+          };
+
+          setActiveChatId(
+            newChat.id
+          );
+
+          return [newChat];
+        }
+      }
+
+      return remaining;
+    });
   }
 
-  // --------------------------------
+  // -----------------------------
   // IMAGE UPLOAD
-  // --------------------------------
+  // -----------------------------
 
   function handleImageUpload(
-    event: React.ChangeEvent<HTMLInputElement>
+    event: ChangeEvent<HTMLInputElement>
   ) {
     const file =
       event.target.files?.[0];
@@ -163,129 +198,62 @@ export default function Home() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
-      return;
-    }
-
-    // Keep upload reasonably small because
-    // the image is sent as base64.
-    if (file.size > 3 * 1024 * 1024) {
       alert(
-        "Please choose an image smaller than 3 MB."
+        "Please select an image file."
       );
+
       return;
     }
 
-    setImageName(file.name);
+    const maxSize =
+      5 * 1024 * 1024;
 
-    const reader = new FileReader();
+    if (file.size > maxSize) {
+      alert(
+        "Image must be smaller than 5 MB."
+      );
+
+      return;
+    }
+
+    const reader =
+      new FileReader();
 
     reader.onload = () => {
-      if (
-        typeof reader.result === "string"
-      ) {
-        setSelectedImage(
-          reader.result
-        );
-      }
+      setSelectedImage(
+        reader.result as string
+      );
     };
 
     reader.readAsDataURL(file);
+
+    event.target.value = "";
   }
 
-  // --------------------------------
-  // REMOVE IMAGE
-  // --------------------------------
-
-  function removeSelectedImage() {
-    setSelectedImage("");
-    setImageName("");
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  // --------------------------------
-  // UPDATE CHAT
-  // --------------------------------
-
-  function updateChat(
-    chatId: string,
-    newMessages: Message[]
-  ) {
-    setChats((prev) =>
-      prev.map((chat) => {
-        if (chat.id !== chatId) {
-          return chat;
-        }
-
-        let title = chat.title;
-
-        if (
-          chat.messages.length === 0 &&
-          newMessages.length > 0
-        ) {
-          const firstUserMessage =
-            newMessages.find(
-              (message) =>
-                message.role === "user"
-            );
-
-          if (
-            firstUserMessage?.content
-          ) {
-            title =
-              firstUserMessage.content
-                .slice(0, 35)
-                .trim() || "New chat";
-          } else {
-            title = "Image chat";
-          }
-        }
-
-        return {
-          ...chat,
-          title,
-          messages: newMessages,
-        };
-      })
-    );
-  }
-
-  // --------------------------------
+  // -----------------------------
   // SEND MESSAGE
-  // --------------------------------
+  // -----------------------------
 
-  async function sendMessage() {
-    const text = input.trim();
+  async function handleSubmit(
+    event?: FormEvent
+  ) {
+    event?.preventDefault();
+
+    if (loading) return;
+
+    const text =
+      input.trim();
 
     if (
-      (!text && !selectedImage) ||
-      loading
+      !text &&
+      !selectedImage
     ) {
       return;
     }
 
-    let chatId = activeChatId;
-
-    if (!chatId) {
-      const newChat: Chat = {
-        id: crypto.randomUUID(),
-        title:
-          text.slice(0, 35) ||
-          "Image chat",
-        messages: [],
-        createdAt: Date.now(),
-      };
-
-      setChats((prev) => [
-        newChat,
-        ...prev,
-      ]);
-
-      chatId = newChat.id;
-      setActiveChatId(chatId);
+    if (!activeChatId) {
+      createNewChat();
+      return;
     }
 
     const userMessage: Message = {
@@ -293,67 +261,78 @@ export default function Home() {
       content:
         text ||
         "Please analyze this image.",
-      image: selectedImage || undefined,
-      type: selectedImage
-        ? "image"
-        : "text",
+      image:
+        selectedImage || undefined,
     };
 
-    const currentMessages =
+    const currentChat =
       chats.find(
-        (chat) => chat.id === chatId
-      )?.messages || [];
+        (chat) =>
+          chat.id === activeChatId
+      );
 
-    const newMessages = [
-      ...currentMessages,
+    if (!currentChat) return;
+
+    const updatedMessages = [
+      ...currentChat.messages,
       userMessage,
     ];
 
-    updateChat(
-      chatId,
-      newMessages
+    const title =
+      currentChat.messages.length === 0
+        ? text ||
+          "Image analysis"
+        : currentChat.title;
+
+    setChats((previous) =>
+      previous.map((chat) =>
+        chat.id === activeChatId
+          ? {
+              ...chat,
+              title:
+                title.length > 45
+                  ? title.slice(
+                      0,
+                      45
+                    ) + "..."
+                  : title,
+              messages:
+                updatedMessages,
+            }
+          : chat
+      )
     );
 
     setInput("");
-    setSelectedImage("");
-    setImageName("");
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    setSelectedImage(null);
 
     setLoading(true);
 
     try {
-      const response = await fetch(
-        "/api/ai",
-        {
+      const response =
+        await fetch("/api/ai", {
           method: "POST",
+
           headers: {
             "Content-Type":
               "application/json",
           },
+
           body: JSON.stringify({
-            messages: newMessages,
+            messages:
+              updatedMessages,
           }),
-        }
-      );
+        });
 
       if (!response.ok) {
-        let errorMessage =
-          "Something went wrong.";
-
-        try {
-          const error =
-            await response.json();
-
-          errorMessage =
-            error.error ||
-            errorMessage;
-        } catch {}
+        const errorData =
+          await response
+            .json()
+            .catch(() => null);
 
         throw new Error(
-          errorMessage
+          errorData?.error ||
+            "AI request failed."
         );
       }
 
@@ -362,43 +341,58 @@ export default function Home() {
           "content-type"
         ) || "";
 
-      // --------------------------------
-      // IMAGE RESPONSE
-      // --------------------------------
+      // -------------------------
+      // JSON RESPONSE
+      // -------------------------
 
       if (
         contentType.includes(
           "application/json"
         )
       ) {
-        const result =
+        const data =
           await response.json();
 
         const assistantMessage: Message =
           {
             role: "assistant",
+
             content:
-              result.text ||
+              data.text ||
               "Done.",
-            image: result.image,
-            type: "image",
+
+            image:
+              data.image ||
+              undefined,
           };
 
-        updateChat(chatId, [
-          ...newMessages,
-          assistantMessage,
-        ]);
+        setChats((previous) =>
+          previous.map(
+            (chat) =>
+              chat.id ===
+              activeChatId
+                ? {
+                    ...chat,
+
+                    messages: [
+                      ...chat.messages,
+                      assistantMessage,
+                    ],
+                  }
+                : chat
+          )
+        );
 
         return;
       }
 
-      // --------------------------------
-      // STREAMING TEXT RESPONSE
-      // --------------------------------
+      // -------------------------
+      // STREAM RESPONSE
+      // -------------------------
 
       if (!response.body) {
         throw new Error(
-          "No response body received."
+          "No response body."
         );
       }
 
@@ -410,23 +404,33 @@ export default function Home() {
 
       let assistantText = "";
 
-      const assistantMessage: Message =
-        {
-          role: "assistant",
-          content: "",
-          type: "text",
-        };
+      // Add empty assistant message
+      setChats((previous) =>
+        previous.map((chat) =>
+          chat.id ===
+          activeChatId
+            ? {
+                ...chat,
 
-      updateChat(chatId, [
-        ...newMessages,
-        assistantMessage,
-      ]);
+                messages: [
+                  ...chat.messages,
+                  {
+                    role:
+                      "assistant",
+                    content: "",
+                  },
+                ],
+              }
+            : chat
+        )
+      );
 
       while (true) {
         const {
-          done,
           value,
-        } = await reader.read();
+          done,
+        } =
+          await reader.read();
 
         if (done) break;
 
@@ -440,404 +444,488 @@ export default function Home() {
 
         assistantText += chunk;
 
-        updateChat(chatId, [
-          ...newMessages,
-          {
-            role: "assistant",
-            content:
-              assistantText,
-            type: "text",
-          },
-        ]);
+        setChats((previous) =>
+          previous.map(
+            (chat) => {
+              if (
+                chat.id !==
+                activeChatId
+              ) {
+                return chat;
+              }
+
+              const messages =
+                [...chat.messages];
+
+              const lastIndex =
+                messages.length -
+                1;
+
+              messages[lastIndex] =
+                {
+                  role:
+                    "assistant",
+                  content:
+                    assistantText,
+                };
+
+              return {
+                ...chat,
+                messages,
+              };
+            }
+          )
+        );
       }
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Send error:",
+        error
+      );
 
-      updateChat(chatId, [
-        ...newMessages,
+      const errorMessage: Message =
         {
           role: "assistant",
+
           content:
             error instanceof Error
-              ? error.message
+              ? `Sorry, ${error.message}`
               : "Sorry, something went wrong.",
-        },
-      ]);
+        };
+
+      setChats((previous) =>
+        previous.map((chat) =>
+          chat.id ===
+          activeChatId
+            ? {
+                ...chat,
+
+                messages: [
+                  ...chat.messages,
+                  errorMessage,
+                ],
+              }
+            : chat
+        )
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  // --------------------------------
-  // ENTER KEY
-  // --------------------------------
+  // -----------------------------
+  // SUGGESTIONS
+  // -----------------------------
 
-  function handleKeyDown(
-    event: React.KeyboardEvent<HTMLTextAreaElement>
-  ) {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey
-    ) {
-      event.preventDefault();
-      sendMessage();
-    }
-  }
-
-  // --------------------------------
-  // COPY
-  // --------------------------------
-
-  async function copyMessage(
-    content: string,
-    index: number
-  ) {
-    try {
-      await navigator.clipboard.writeText(
-        content
-      );
-
-      setCopied(index);
-
-      setTimeout(() => {
-        setCopied(null);
-      }, 1500);
-    } catch {
-      console.error(
-        "Copy failed."
-      );
-    }
-  }
-
-  // --------------------------------
-  // SUGGESTION
-  // --------------------------------
+  const suggestions = [
+    "Explain machine learning simply",
+    "Help me write Python code",
+    "What is SQL?",
+    "Explain data science concepts",
+  ];
 
   function useSuggestion(
     suggestion: string
   ) {
     setInput(suggestion);
-
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 50);
   }
 
   return (
-    <main className="flex h-screen bg-[#0b0d10] text-white overflow-hidden">
+    <main className="flex h-screen overflow-hidden bg-[#0b0d10] text-white">
       {/* SIDEBAR */}
 
-      <aside className="hidden md:flex w-[270px] flex-col border-r border-white/10 bg-[#101216]">
-        <div className="p-4">
-          <button
-            onClick={createChat}
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left hover:bg-white/10 transition"
-          >
-            <span className="text-lg">
-              ＋
-            </span>{" "}
-            New chat
-          </button>
-        </div>
+      <aside
+        className={`${
+          sidebarOpen
+            ? "w-[270px]"
+            : "w-0"
+        } flex-shrink-0 overflow-hidden border-r border-white/10 bg-[#101216] transition-all duration-300`}
+      >
+        <div className="flex h-full w-[270px] flex-col">
+          {/* LOGO */}
 
-        <div className="px-4 pb-2 text-xs uppercase tracking-wider text-gray-500">
-          History
-        </div>
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-black font-bold">
+                AI
+              </div>
 
-        <div className="flex-1 overflow-y-auto px-2">
-          {chats.map((chat) => (
-            <button
-              key={chat.id}
-              onClick={() =>
-                setActiveChatId(chat.id)
-              }
-              className={`group mb-1 flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm transition ${
-                activeChatId === chat.id
-                  ? "bg-white/10"
-                  : "hover:bg-white/5"
-              }`}
-            >
-              <span className="truncate">
-                {chat.title}
-              </span>
+              <div>
+                <div className="font-semibold">
+                  My AI
+                </div>
 
-              <span
-                onClick={(event) =>
-                  deleteChat(
-                    event,
-                    chat.id
-                  )
-                }
-                className="ml-2 hidden cursor-pointer text-gray-500 group-hover:block hover:text-red-400"
-              >
-                ×
-              </span>
-            </button>
-          ))}
-
-          {chats.length === 0 && (
-            <div className="px-3 py-5 text-sm text-gray-600">
-              No conversations yet.
+                <div className="text-xs text-gray-500">
+                  Groq AI Assistant
+                </div>
+              </div>
             </div>
-          )}
-        </div>
 
-        <div className="border-t border-white/10 p-4 text-xs text-gray-500">
-          My AI
-          <br />
-          Powered by Groq + AI image generation
+            <button
+              onClick={() =>
+                setSidebarOpen(false)
+              }
+              className="rounded-lg px-2 py-1 text-gray-400 hover:bg-white/10 hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* NEW CHAT */}
+
+          <div className="p-3">
+            <button
+              onClick={
+                createNewChat
+              }
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left text-sm transition hover:bg-white/[0.08]"
+            >
+              <span className="mr-2">
+                +
+              </span>
+
+              New chat
+            </button>
+          </div>
+
+          {/* HISTORY */}
+
+          <div className="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+            Recent chats
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-2">
+            {chats.map((chat) => (
+              <div
+                key={chat.id}
+                className={`group mb-1 flex items-center rounded-xl ${
+                  activeChatId ===
+                  chat.id
+                    ? "bg-white/[0.09]"
+                    : "hover:bg-white/[0.05]"
+                }`}
+              >
+                <button
+                  onClick={() => {
+                    setActiveChatId(
+                      chat.id
+                    );
+                    setSelectedImage(
+                      null
+                    );
+                    setInput("");
+                  }}
+                  className="min-w-0 flex-1 px-3 py-3 text-left text-sm"
+                >
+                  <div className="truncate">
+                    {chat.title}
+                  </div>
+                </button>
+
+                <button
+                  onClick={() =>
+                    deleteChat(
+                      chat.id
+                    )
+                  }
+                  className="mr-2 hidden rounded-lg px-2 py-1 text-gray-500 hover:bg-white/10 hover:text-white group-hover:block"
+                  title="Delete chat"
+                >
+                  🗑
+                </button>
+              </div>
+            ))}
+
+            {chats.length ===
+              0 && (
+              <div className="px-3 py-5 text-sm text-gray-500">
+                No conversations yet.
+              </div>
+            )}
+          </div>
+
+          {/* FOOTER */}
+
+          <div className="border-t border-white/10 p-4 text-xs text-gray-500">
+            Powered by Groq
+          </div>
         </div>
       </aside>
 
       {/* MAIN */}
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="relative flex min-w-0 flex-1 flex-col">
         {/* HEADER */}
 
-        <header className="flex h-16 items-center border-b border-white/10 px-5">
-          <div>
-            <h1 className="font-semibold">
-              My AI
-            </h1>
+        <header className="flex h-16 items-center justify-between border-b border-white/10 px-4">
+          <div className="flex items-center gap-3">
+            {!sidebarOpen && (
+              <button
+                onClick={() =>
+                  setSidebarOpen(
+                    true
+                  )
+                }
+                className="rounded-lg px-3 py-2 text-gray-400 hover:bg-white/10 hover:text-white"
+              >
+                ☰
+              </button>
+            )}
 
-            <p className="text-xs text-gray-500">
-              Multimodal AI Assistant
-            </p>
-          </div>
-        </header>
-
-        {/* MESSAGES */}
-
-        <div className="flex-1 overflow-y-auto">
-          {messages.length === 0 ? (
-            <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-6">
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-3xl">
-                ✦
+            <div>
+              <div className="font-semibold">
+                My AI
               </div>
 
-              <h2 className="text-3xl font-semibold">
-                What can I help you with?
-              </h2>
-
-              <p className="mt-3 text-center text-gray-500">
-                Ask questions, upload images,
-                analyze photos or create new
-                images.
-              </p>
-
-              <div className="mt-8 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
-                {[
-                  "Analyze this image",
-                  "Read the text in this image",
-                  "Explain this chart",
-                  "Create an image of a futuristic city",
-                ].map(
-                  (suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() =>
-                        useSuggestion(
-                          suggestion
-                        )
-                      }
-                      className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-left text-sm text-gray-300 hover:bg-white/[0.07] transition"
-                    >
-                      {suggestion}
-                    </button>
-                  )
-                )}
+              <div className="text-xs text-gray-500">
+                AI Assistant
               </div>
             </div>
-          ) : (
-            <div className="mx-auto max-w-3xl px-5 py-8">
-              {messages.map(
-                (message, index) => (
-                  <div
-                    key={index}
-                    className={`mb-8 flex ${
-                      message.role ===
-                      "user"
-                        ? "justify-end"
-                        : "justify-start"
-                    }`}
-                  >
+          </div>
+
+          <button
+            onClick={
+              createNewChat
+            }
+            className="rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-300 hover:bg-white/10"
+          >
+            + New chat
+          </button>
+        </header>
+
+        {/* CHAT */}
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-4xl px-4 py-8">
+            {!activeChat ||
+            activeChat.messages.length ===
+              0 ? (
+              <div className="flex min-h-[65vh] flex-col items-center justify-center text-center">
+                <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-xl font-bold text-black shadow-xl">
+                  AI
+                </div>
+
+                <h1 className="text-3xl font-semibold tracking-tight">
+                  How can I help you?
+                </h1>
+
+                <p className="mt-3 max-w-lg text-sm leading-6 text-gray-500">
+                  Ask questions, learn
+                  concepts, write code,
+                  or upload an image for
+                  analysis.
+                </p>
+
+                <div className="mt-8 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+                  {suggestions.map(
+                    (suggestion) => (
+                      <button
+                        key={
+                          suggestion
+                        }
+                        onClick={() =>
+                          useSuggestion(
+                            suggestion
+                          )
+                        }
+                        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left text-sm text-gray-300 transition hover:border-white/20 hover:bg-white/[0.07]"
+                      >
+                        {suggestion}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-7">
+                {activeChat.messages.map(
+                  (
+                    message,
+                    index
+                  ) => (
                     <div
-                      className={`max-w-[85%] ${
+                      key={
+                        `${activeChat.id}-${index}`
+                      }
+                      className={`flex ${
                         message.role ===
                         "user"
-                          ? "rounded-2xl bg-white/10 px-4 py-3"
-                          : ""
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
-                      {/* IMAGE */}
+                      <div
+                        className={`max-w-[85%] ${
+                          message.role ===
+                          "user"
+                            ? "rounded-2xl rounded-br-md bg-white px-4 py-3 text-black"
+                            : "w-full max-w-3xl px-2 py-1 text-gray-200"
+                        }`}
+                      >
+                        {/* IMAGE */}
 
-                      {message.image && (
-                        <div className="mb-3 overflow-hidden rounded-xl border border-white/10">
+                        {message.image && (
                           <img
                             src={
                               message.image
                             }
-                            alt="Uploaded or generated"
-                            className="max-h-[500px] w-auto max-w-full object-contain"
+                            alt="Uploaded image"
+                            className="mb-3 max-h-[420px] max-w-full rounded-xl border border-black/10 object-contain"
                           />
-                        </div>
-                      )}
-
-                      {/* TEXT */}
-
-                      {message.content && (
-                        <div className="whitespace-pre-wrap text-[15px] leading-7">
-                          {message.content}
-                        </div>
-                      )}
-
-                      {/* COPY */}
-
-                      {message.role ===
-                        "assistant" &&
-                        message.content && (
-                          <button
-                            onClick={() =>
-                              copyMessage(
-                                message.content,
-                                index
-                              )
-                            }
-                            className="mt-3 text-xs text-gray-500 hover:text-white"
-                          >
-                            {copied ===
-                            index
-                              ? "Copied"
-                              : "Copy"}
-                          </button>
                         )}
-                    </div>
-                  </div>
-                )
-              )}
 
-              {loading && (
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="animate-pulse">
-                    ●
-                  </span>
-                  My AI is working...
-                </div>
-              )}
-            </div>
-          )}
+                        {/* TEXT */}
+
+                        {message.content && (
+                          <div className="whitespace-pre-wrap text-sm leading-7">
+                            {message.content}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {loading && (
+                  <div className="flex items-center gap-2 px-2 text-sm text-gray-500">
+                    <span className="animate-pulse">
+                      ●
+                    </span>
+
+                    My AI is thinking...
+                  </div>
+                )}
+
+                <div ref={bottomRef} />
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* IMAGE PREVIEW */}
+
+        {selectedImage && (
+          <div className="mx-auto w-full max-w-4xl px-4">
+            <div className="mb-3 flex items-start gap-3 rounded-2xl border border-white/10 bg-[#15181d] p-3">
+              <img
+                src={selectedImage}
+                alt="Selected image"
+                className="h-20 w-20 rounded-xl object-cover"
+              />
+
+              <div className="flex-1">
+                <div className="text-sm font-medium">
+                  Image attached
+                </div>
+
+                <div className="mt-1 text-xs text-gray-500">
+                  Ask anything about
+                  this image.
+                </div>
+              </div>
+
+              <button
+                onClick={() =>
+                  setSelectedImage(
+                    null
+                  )
+                }
+                className="rounded-lg px-2 py-1 text-gray-400 hover:bg-white/10 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* INPUT */}
 
         <div className="border-t border-white/10 bg-[#0b0d10] p-4">
-          <div className="mx-auto max-w-3xl">
-            {/* IMAGE PREVIEW */}
+          <form
+            onSubmit={
+              handleSubmit
+            }
+            className="mx-auto max-w-4xl"
+          >
+            <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-[#15181d] p-2 shadow-2xl">
+              {/* IMAGE BUTTON */}
 
-            {selectedImage && (
-              <div className="mb-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                <img
-                  src={selectedImage}
-                  alt="Preview"
-                  className="h-16 w-16 rounded-lg object-cover"
-                />
+              <button
+                type="button"
+                onClick={() =>
+                  fileInputRef.current?.click()
+                }
+                disabled={loading}
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                title="Upload image"
+              >
+                📎
+              </button>
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm">
-                    {imageName ||
-                      "Image attached"}
-                  </p>
+              <input
+                ref={
+                  fileInputRef
+                }
+                type="file"
+                accept="image/*"
+                onChange={
+                  handleImageUpload
+                }
+                className="hidden"
+              />
 
-                  <p className="text-xs text-gray-500">
-                    Ask My AI what to do with
-                    this image.
-                  </p>
-                </div>
+              {/* TEXT */}
 
-                <button
-                  onClick={
-                    removeSelectedImage
-                  }
-                  className="rounded-lg px-3 py-2 text-gray-400 hover:bg-white/10 hover:text-white"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-
-            <div className="rounded-2xl border border-white/10 bg-[#15181d] p-2 shadow-2xl">
               <textarea
-                ref={textareaRef}
                 value={input}
                 onChange={(event) =>
                   setInput(
                     event.target.value
                   )
                 }
-                onKeyDown={handleKeyDown}
+                onKeyDown={(
+                  event
+                ) => {
+                  if (
+                    event.key ===
+                      "Enter" &&
+                    !event.shiftKey
+                  ) {
+                    event.preventDefault();
+
+                    handleSubmit();
+                  }
+                }}
                 placeholder={
                   selectedImage
-                    ? "Tell My AI what to do with this image..."
+                    ? "Ask something about this image..."
                     : "Message My AI..."
                 }
                 rows={1}
-                className="max-h-40 min-h-[48px] w-full resize-none bg-transparent px-3 py-3 text-sm outline-none placeholder:text-gray-600"
+                className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-gray-600"
               />
 
-              <div className="flex items-center justify-between px-1 pb-1">
-                <div>
-                  {/* FILE INPUT */}
+              {/* SEND */}
 
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={
-                      handleImageUpload
-                    }
-                    className="hidden"
-                  />
-
-                  <button
-                    onClick={() =>
-                      fileInputRef.current?.click()
-                    }
-                    disabled={loading}
-                    title="Upload image"
-                    className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-400 hover:bg-white/10 hover:text-white disabled:opacity-40"
-                  >
-                    <svg
-                      width="21"
-                      height="21"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.82-2.83l8.49-8.48" />
-                    </svg>
-                  </button>
-                </div>
-
-                <button
-                  onClick={sendMessage}
-                  disabled={
-                    loading ||
-                    (!input.trim() &&
-                      !selectedImage)
-                  }
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-black transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  ↑
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  (!input.trim() &&
+                    !selectedImage)
+                }
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white text-black transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                ↑
+              </button>
             </div>
 
-            <p className="mt-2 text-center text-[11px] text-gray-600">
-              My AI can analyze images and
-              create or edit images.
-            </p>
-          </div>
+            <div className="mt-2 text-center text-[11px] text-gray-600">
+              My AI can make mistakes.
+              Check important
+              information.
+            </div>
+          </form>
         </div>
       </section>
     </main>
