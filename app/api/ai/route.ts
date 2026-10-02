@@ -13,9 +13,6 @@ const groq = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
 });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
