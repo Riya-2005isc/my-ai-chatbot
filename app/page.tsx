@@ -12,6 +12,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   image?: string;
+  fileName?: string;
 };
 
 type Chat = {
@@ -23,16 +24,31 @@ type Chat = {
 
 const STORAGE_KEY = "my-ai-chat-history";
 
+function createChat(): Chat {
+  return {
+    id: crypto.randomUUID(),
+    title: "New Chat",
+    messages: [],
+    createdAt: Date.now(),
+  };
+}
+
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] =
-    useState<string | null>(null);
+    useState<string>("");
 
   const [input, setInput] = useState("");
+  const [loading, setLoading] =
+    useState(false);
+
   const [selectedImage, setSelectedImage] =
     useState<string | null>(null);
 
-  const [loading, setLoading] =
+  const [selectedFile, setSelectedFile] =
+    useState<File | null>(null);
+
+  const [fileLoading, setFileLoading] =
     useState(false);
 
   const [sidebarOpen, setSidebarOpen] =
@@ -41,19 +57,18 @@ export default function Home() {
   const fileInputRef =
     useRef<HTMLInputElement>(null);
 
+  const imageInputRef =
+    useRef<HTMLInputElement>(null);
+
   const bottomRef =
     useRef<HTMLDivElement>(null);
 
-  // -----------------------------
-  // LOAD HISTORY
-  // -----------------------------
-
   useEffect(() => {
-    try {
-      const saved =
-        localStorage.getItem(STORAGE_KEY);
+    const saved =
+      localStorage.getItem(STORAGE_KEY);
 
-      if (saved) {
+    if (saved) {
+      try {
         const parsed = JSON.parse(saved);
 
         if (
@@ -64,20 +79,16 @@ export default function Home() {
           setActiveChatId(parsed[0].id);
           return;
         }
+      } catch {
+        // Ignore invalid local storage
       }
-    } catch (error) {
-      console.error(
-        "History loading error:",
-        error
-      );
     }
 
-    createNewChat();
-  }, []);
+    const firstChat = createChat();
 
-  // -----------------------------
-  // SAVE HISTORY
-  // -----------------------------
+    setChats([firstChat]);
+    setActiveChatId(firstChat.id);
+  }, []);
 
   useEffect(() => {
     if (chats.length > 0) {
@@ -88,48 +99,32 @@ export default function Home() {
     }
   }, [chats]);
 
-  // -----------------------------
-  // AUTO SCROLL
-  // -----------------------------
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
       behavior: "smooth",
     });
-  }, [
-    chats,
-    activeChatId,
-    loading,
-  ]);
-
-  // -----------------------------
-  // CURRENT CHAT
-  // -----------------------------
+  }, [chats, loading]);
 
   const activeChat =
     chats.find(
-      (chat) =>
-        chat.id === activeChatId
+      (chat) => chat.id === activeChatId
     ) || null;
 
-  // -----------------------------
-  // CREATE CHAT
-  // -----------------------------
+  function updateChat(
+    chatId: string,
+    updater: (chat: Chat) => Chat
+  ) {
+    setChats((previous) =>
+      previous.map((chat) =>
+        chat.id === chatId
+          ? updater(chat)
+          : chat
+      )
+    );
+  }
 
-  function createNewChat() {
-    const newChat: Chat = {
-      id:
-        Date.now().toString() +
-        Math.random()
-          .toString(36)
-          .slice(2),
-
-      title: "New conversation",
-
-      messages: [],
-
-      createdAt: Date.now(),
-    };
+  function handleNewChat() {
+    const newChat = createChat();
 
     setChats((previous) => [
       newChat,
@@ -137,59 +132,36 @@ export default function Home() {
     ]);
 
     setActiveChatId(newChat.id);
-
     setInput("");
-
     setSelectedImage(null);
+    setSelectedFile(null);
   }
 
-  // -----------------------------
-  // DELETE CHAT
-  // -----------------------------
+  function handleDeleteChat(
+    chatId: string
+  ) {
+    const remaining = chats.filter(
+      (chat) => chat.id !== chatId
+    );
 
-  function deleteChat(id: string) {
-    setChats((previous) => {
-      const remaining =
-        previous.filter(
-          (chat) => chat.id !== id
-        );
+    if (remaining.length === 0) {
+      const newChat = createChat();
 
-      if (id === activeChatId) {
-        if (remaining.length > 0) {
-          setActiveChatId(
-            remaining[0].id
-          );
-        } else {
-          const newChat: Chat = {
-            id:
-              Date.now().toString(),
+      setChats([newChat]);
+      setActiveChatId(newChat.id);
+      return;
+    }
 
-            title:
-              "New conversation",
+    setChats(remaining);
 
-            messages: [],
-
-            createdAt:
-              Date.now(),
-          };
-
-          setActiveChatId(
-            newChat.id
-          );
-
-          return [newChat];
-        }
-      }
-
-      return remaining;
-    });
+    if (activeChatId === chatId) {
+      setActiveChatId(
+        remaining[0].id
+      );
+    }
   }
 
-  // -----------------------------
-  // IMAGE UPLOAD
-  // -----------------------------
-
-  function handleImageUpload(
+  function handleImageChange(
     event: ChangeEvent<HTMLInputElement>
   ) {
     const file =
@@ -198,21 +170,14 @@ export default function Home() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert(
-        "Please select an image file."
-      );
-
+      alert("Please select an image file.");
       return;
     }
 
-    const maxSize =
-      5 * 1024 * 1024;
-
-    if (file.size > maxSize) {
+    if (file.size > 10 * 1024 * 1024) {
       alert(
-        "Image must be smaller than 5 MB."
+        "Please choose an image smaller than 10 MB."
       );
-
       return;
     }
 
@@ -227,32 +192,92 @@ export default function Home() {
 
     reader.readAsDataURL(file);
 
+    setSelectedFile(null);
+
     event.target.value = "";
   }
 
-  // -----------------------------
-  // SEND MESSAGE
-  // -----------------------------
+  function handleFileChange(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const file =
+      event.target.files?.[0];
 
-  async function handleSubmit(
+    if (!file) return;
+
+    const allowedExtensions = [
+      ".pdf",
+      ".docx",
+      ".xlsx",
+      ".xls",
+      ".csv",
+      ".txt",
+    ];
+
+    const lowerName =
+      file.name.toLowerCase();
+
+    const valid =
+      allowedExtensions.some(
+        (extension) =>
+          lowerName.endsWith(extension)
+      );
+
+    if (!valid) {
+      alert(
+        "Supported files: PDF, DOCX, XLSX, XLS, CSV and TXT."
+      );
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      alert(
+        "Please choose a file smaller than 15 MB."
+      );
+      return;
+    }
+
+    setSelectedFile(file);
+    setSelectedImage(null);
+
+    event.target.value = "";
+  }
+
+  function removeAttachment() {
+    setSelectedImage(null);
+    setSelectedFile(null);
+  }
+
+  async function sendMessage(
     event?: FormEvent
   ) {
     event?.preventDefault();
 
-    if (loading) return;
+    if (loading || fileLoading) {
+      return;
+    }
 
-    const text =
-      input.trim();
+    const text = input.trim();
 
     if (
       !text &&
-      !selectedImage
+      !selectedImage &&
+      !selectedFile
     ) {
       return;
     }
 
-    if (!activeChatId) {
-      createNewChat();
+    if (!activeChat) {
+      return;
+    }
+
+    if (selectedFile) {
+      await analyzeFile(
+        selectedFile,
+        text ||
+          "Analyze this file and give me the most important information."
+      );
+
       return;
     }
 
@@ -261,138 +286,100 @@ export default function Home() {
       content:
         text ||
         "Please analyze this image.",
-      image:
-        selectedImage || undefined,
+      image: selectedImage || undefined,
     };
 
-    const currentChat =
-      chats.find(
-        (chat) =>
-          chat.id === activeChatId
-      );
-
-    if (!currentChat) return;
-
     const updatedMessages = [
-      ...currentChat.messages,
+      ...activeChat.messages,
       userMessage,
     ];
 
     const title =
-      currentChat.messages.length === 0
-        ? text ||
-          "Image analysis"
-        : currentChat.title;
+      activeChat.messages.length === 0
+        ? text.slice(0, 40) ||
+          "Image Analysis"
+        : activeChat.title;
 
-    setChats((previous) =>
-      previous.map((chat) =>
-        chat.id === activeChatId
-          ? {
-              ...chat,
-              title:
-                title.length > 45
-                  ? title.slice(
-                      0,
-                      45
-                    ) + "..."
-                  : title,
-              messages:
-                updatedMessages,
-            }
-          : chat
-      )
+    updateChat(
+      activeChat.id,
+      (chat) => ({
+        ...chat,
+        title:
+          chat.title === "New Chat"
+            ? title
+            : chat.title,
+        messages: updatedMessages,
+      })
     );
 
     setInput("");
     setSelectedImage(null);
-
     setLoading(true);
 
     try {
-      const response =
-        await fetch("/api/ai", {
-          method: "POST",
+      const apiMessages =
+        updatedMessages.map(
+          (message) => {
+            if (message.image) {
+              return {
+                role: message.role,
+                content: [
+                  {
+                    type: "text",
+                    text: message.content,
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: message.image,
+                    },
+                  },
+                ],
+              };
+            }
 
+            return {
+              role: message.role,
+              content: message.content,
+            };
+          }
+        );
+
+      const response =
+        await fetch("/api/chat", {
+          method: "POST",
           headers: {
             "Content-Type":
               "application/json",
           },
-
           body: JSON.stringify({
-            messages:
-              updatedMessages,
+            messages: apiMessages,
           }),
         });
 
       if (!response.ok) {
-        const errorData =
-          await response
-            .json()
-            .catch(() => null);
+        let errorMessage =
+          "Something went wrong.";
+
+        try {
+          const error =
+            await response.json();
+
+          errorMessage =
+            error.error ||
+            errorMessage;
+        } catch {
+          // Ignore JSON parsing errors
+        }
 
         throw new Error(
-          errorData?.error ||
-            "AI request failed."
+          errorMessage
         );
       }
-
-      const contentType =
-        response.headers.get(
-          "content-type"
-        ) || "";
-
-      // -------------------------
-      // JSON RESPONSE
-      // -------------------------
-
-      if (
-        contentType.includes(
-          "application/json"
-        )
-      ) {
-        const data =
-          await response.json();
-
-        const assistantMessage: Message =
-          {
-            role: "assistant",
-
-            content:
-              data.text ||
-              "Done.",
-
-            image:
-              data.image ||
-              undefined,
-          };
-
-        setChats((previous) =>
-          previous.map(
-            (chat) =>
-              chat.id ===
-              activeChatId
-                ? {
-                    ...chat,
-
-                    messages: [
-                      ...chat.messages,
-                      assistantMessage,
-                    ],
-                  }
-                : chat
-          )
-        );
-
-        return;
-      }
-
-      // -------------------------
-      // STREAM RESPONSE
-      // -------------------------
 
       if (!response.body) {
         throw new Error(
-          "No response body."
+          "No response received from the server."
         );
       }
 
@@ -404,130 +391,210 @@ export default function Home() {
 
       let assistantText = "";
 
-      // Add empty assistant message
-      setChats((previous) =>
-        previous.map((chat) =>
-          chat.id ===
-          activeChatId
-            ? {
-                ...chat,
-
-                messages: [
-                  ...chat.messages,
-                  {
-                    role:
-                      "assistant",
-                    content: "",
-                  },
-                ],
-              }
-            : chat
-        )
+      updateChat(
+        activeChat.id,
+        (chat) => ({
+          ...chat,
+          messages: [
+            ...chat.messages,
+            {
+              role: "assistant",
+              content: "",
+            },
+          ],
+        })
       );
 
       while (true) {
         const {
           value,
           done,
-        } =
-          await reader.read();
+        } = await reader.read();
 
         if (done) break;
 
         const chunk =
-          decoder.decode(
-            value,
-            {
-              stream: true,
-            }
-          );
+          decoder.decode(value, {
+            stream: true,
+          });
 
         assistantText += chunk;
 
-        setChats((previous) =>
-          previous.map(
-            (chat) => {
-              if (
-                chat.id !==
-                activeChatId
-              ) {
-                return chat;
-              }
+        updateChat(
+          activeChat.id,
+          (chat) => {
+            const messages = [
+              ...chat.messages,
+            ];
 
-              const messages =
-                [...chat.messages];
+            const last =
+              messages[
+                messages.length - 1
+              ];
 
-              const lastIndex =
-                messages.length -
-                1;
-
-              messages[lastIndex] =
-                {
-                  role:
-                    "assistant",
-                  content:
-                    assistantText,
-                };
-
-              return {
-                ...chat,
-                messages,
+            if (
+              last?.role ===
+              "assistant"
+            ) {
+              messages[
+                messages.length - 1
+              ] = {
+                ...last,
+                content:
+                  assistantText,
               };
             }
-          )
+
+            return {
+              ...chat,
+              messages,
+            };
+          }
         );
       }
     } catch (error) {
-      console.error(
-        "Send error:",
-        error
-      );
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
 
-      const errorMessage: Message =
-        {
-          role: "assistant",
-
-          content:
-            error instanceof Error
-              ? `Sorry, ${error.message}`
-              : "Sorry, something went wrong.",
-        };
-
-      setChats((previous) =>
-        previous.map((chat) =>
-          chat.id ===
-          activeChatId
-            ? {
-                ...chat,
-
-                messages: [
-                  ...chat.messages,
-                  errorMessage,
-                ],
-              }
-            : chat
-        )
+      updateChat(
+        activeChat.id,
+        (chat) => ({
+          ...chat,
+          messages: [
+            ...chat.messages,
+            {
+              role: "assistant",
+              content:
+                `Sorry, I couldn't complete that request.\n\n${message}`,
+            },
+          ],
+        })
       );
     } finally {
       setLoading(false);
     }
   }
 
-  // -----------------------------
-  // SUGGESTIONS
-  // -----------------------------
-
-  const suggestions = [
-    "Explain machine learning simply",
-    "Help me write Python code",
-    "What is SQL?",
-    "Explain data science concepts",
-  ];
-
-  function useSuggestion(
-    suggestion: string
+  async function analyzeFile(
+    file: File,
+    question: string
   ) {
-    setInput(suggestion);
+    if (!activeChat) return;
+
+    setFileLoading(true);
+
+    const userMessage: Message = {
+      role: "user",
+      content: question,
+      fileName: file.name,
+    };
+
+    const newMessages = [
+      ...activeChat.messages,
+      userMessage,
+    ];
+
+    updateChat(
+      activeChat.id,
+      (chat) => ({
+        ...chat,
+        title:
+          chat.messages.length === 0
+            ? file.name.slice(0, 40)
+            : chat.title,
+        messages: newMessages,
+      })
+    );
+
+    setInput("");
+    setSelectedFile(null);
+
+    try {
+      const formData =
+        new FormData();
+
+      formData.append(
+        "file",
+        file
+      );
+
+      formData.append(
+        "question",
+        question
+      );
+
+      const response =
+        await fetch(
+          "/api/analyze-file",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+      const result =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+            "File analysis failed."
+        );
+      }
+
+      updateChat(
+        activeChat.id,
+        (chat) => ({
+          ...chat,
+          messages: [
+            ...chat.messages,
+            {
+              role: "assistant",
+              content:
+                result.answer,
+            },
+          ],
+        })
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "File analysis failed.";
+
+      updateChat(
+        activeChat.id,
+        (chat) => ({
+          ...chat,
+          messages: [
+            ...chat.messages,
+            {
+              role: "assistant",
+              content:
+                `I couldn't analyze this file.\n\n${message}`,
+            },
+          ],
+        })
+      );
+    } finally {
+      setFileLoading(false);
+    }
+  }
+
+  async function copyMessage(
+    content: string
+  ) {
+    try {
+      await navigator.clipboard.writeText(
+        content
+      );
+    } catch {
+      alert(
+        "Unable to copy the message."
+      );
+    }
   }
 
   return (
@@ -537,116 +604,68 @@ export default function Home() {
       <aside
         className={`${
           sidebarOpen
-            ? "w-[270px]"
+            ? "w-[280px]"
             : "w-0"
-        } flex-shrink-0 overflow-hidden border-r border-white/10 bg-[#101216] transition-all duration-300`}
+        } shrink-0 overflow-hidden border-r border-white/10 bg-[#111318] transition-all duration-200`}
       >
-        <div className="flex h-full w-[270px] flex-col">
-          {/* LOGO */}
-
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-black font-bold">
-                AI
-              </div>
-
-              <div>
-                <div className="font-semibold">
-                  My AI
-                </div>
-
-                <div className="text-xs text-gray-500">
-                  Groq AI Assistant
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={() =>
-                setSidebarOpen(false)
-              }
-              className="rounded-lg px-2 py-1 text-gray-400 hover:bg-white/10 hover:text-white"
-            >
-              ×
-            </button>
-          </div>
-
-          {/* NEW CHAT */}
-
+        <div className="flex h-full w-[280px] flex-col">
           <div className="p-3">
             <button
-              onClick={
-                createNewChat
-              }
-              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left text-sm transition hover:bg-white/[0.08]"
+              onClick={handleNewChat}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium transition hover:bg-white/10"
             >
-              <span className="mr-2">
+              <span className="text-lg">
                 +
               </span>
-
               New chat
             </button>
           </div>
 
-          {/* HISTORY */}
-
-          <div className="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
-            Recent chats
+          <div className="px-4 pb-2 text-xs font-medium uppercase tracking-wider text-white/40">
+            Chat history
           </div>
 
           <div className="flex-1 overflow-y-auto px-2">
             {chats.map((chat) => (
               <div
                 key={chat.id}
-                className={`group mb-1 flex items-center rounded-xl ${
+                className={`group mb-1 flex items-center rounded-lg ${
                   activeChatId ===
                   chat.id
-                    ? "bg-white/[0.09]"
-                    : "hover:bg-white/[0.05]"
+                    ? "bg-white/10"
+                    : "hover:bg-white/5"
                 }`}
               >
                 <button
-                  onClick={() => {
+                  onClick={() =>
                     setActiveChatId(
                       chat.id
-                    );
-                    setSelectedImage(
-                      null
-                    );
-                    setInput("");
-                  }}
-                  className="min-w-0 flex-1 px-3 py-3 text-left text-sm"
+                    )
+                  }
+                  className="min-w-0 flex-1 truncate px-3 py-3 text-left text-sm text-white/80"
                 >
-                  <div className="truncate">
-                    {chat.title}
-                  </div>
+                  {chat.title ||
+                    "New Chat"}
                 </button>
 
                 <button
                   onClick={() =>
-                    deleteChat(
+                    handleDeleteChat(
                       chat.id
                     )
                   }
-                  className="mr-2 hidden rounded-lg px-2 py-1 text-gray-500 hover:bg-white/10 hover:text-white group-hover:block"
+                  className="mr-2 hidden rounded p-1 text-white/30 hover:bg-white/10 hover:text-white group-hover:block"
                   title="Delete chat"
                 >
-                  🗑
+                  ×
                 </button>
               </div>
             ))}
-
-            {chats.length ===
-              0 && (
-              <div className="px-3 py-5 text-sm text-gray-500">
-                No conversations yet.
-              </div>
-            )}
           </div>
 
-          {/* FOOTER */}
-
-          <div className="border-t border-white/10 p-4 text-xs text-gray-500">
+          <div className="border-t border-white/10 p-4 text-xs text-white/35">
+            My AI
+            <br />
             Powered by Groq
           </div>
         </div>
@@ -654,81 +673,81 @@ export default function Home() {
 
       {/* MAIN */}
 
-      <section className="relative flex min-w-0 flex-1 flex-col">
+      <section className="flex min-w-0 flex-1 flex-col">
         {/* HEADER */}
 
-        <header className="flex h-16 items-center justify-between border-b border-white/10 px-4">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-[#0f1115]/90 px-4 backdrop-blur">
           <div className="flex items-center gap-3">
-            {!sidebarOpen && (
-              <button
-                onClick={() =>
-                  setSidebarOpen(
-                    true
-                  )
-                }
-                className="rounded-lg px-3 py-2 text-gray-400 hover:bg-white/10 hover:text-white"
-              >
-                ☰
-              </button>
-            )}
+            <button
+              onClick={() =>
+                setSidebarOpen(
+                  (value) => !value
+                )
+              }
+              className="rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white"
+              title="Toggle sidebar"
+            >
+              ☰
+            </button>
 
             <div>
               <div className="font-semibold">
                 My AI
               </div>
-
-              <div className="text-xs text-gray-500">
-                AI Assistant
+              <div className="text-[11px] text-white/35">
+                Groq AI Assistant
               </div>
             </div>
           </div>
 
           <button
-            onClick={
-              createNewChat
-            }
-            className="rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-300 hover:bg-white/10"
+            onClick={handleNewChat}
+            className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70 hover:bg-white/10 hover:text-white"
           >
-            + New chat
+            New chat
           </button>
         </header>
 
-        {/* CHAT */}
+        {/* MESSAGES */}
 
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-4xl px-4 py-8">
-            {!activeChat ||
-            activeChat.messages.length ===
-              0 ? (
-              <div className="flex min-h-[65vh] flex-col items-center justify-center text-center">
-                <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-xl font-bold text-black shadow-xl">
-                  AI
+          {activeChat?.messages.length ===
+            0 && (
+            <div className="flex min-h-full items-center justify-center px-6">
+              <div className="w-full max-w-2xl text-center">
+                <div className="mb-4 text-5xl">
+                  ✨
                 </div>
 
-                <h1 className="text-3xl font-semibold tracking-tight">
+                <h1 className="mb-3 text-3xl font-semibold">
                   How can I help you?
                 </h1>
 
-                <p className="mt-3 max-w-lg text-sm leading-6 text-gray-500">
-                  Ask questions, learn
-                  concepts, write code,
-                  or upload an image for
-                  analysis.
+                <p className="mx-auto max-w-xl text-sm leading-6 text-white/45">
+                  Ask anything, upload an
+                  image, or upload a PDF,
+                  Word document, Excel file,
+                  CSV or text file.
                 </p>
 
-                <div className="mt-8 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
-                  {suggestions.map(
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                  {[
+                    "Explain machine learning simply",
+                    "Write a Python program",
+                    "Analyze my PDF",
+                    "Analyze this Excel file",
+                  ].map(
                     (suggestion) => (
                       <button
                         key={
                           suggestion
                         }
                         onClick={() =>
-                          useSuggestion(
+                          setInput(
                             suggestion
                           )
                         }
-                        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left text-sm text-gray-300 transition hover:border-white/20 hover:bg-white/[0.07]"
+                        className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-left text-sm text-white/65 transition hover:bg-white/[0.07]"
                       >
                         {suggestion}
                       </button>
@@ -736,146 +755,138 @@ export default function Home() {
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-7">
-                {activeChat.messages.map(
-                  (
-                    message,
-                    index
-                  ) => (
-                    <div
-                      key={
-                        `${activeChat.id}-${index}`
-                      }
-                      className={`flex ${
-                        message.role ===
-                        "user"
-                          ? "justify-end"
-                          : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[85%] ${
-                          message.role ===
-                          "user"
-                            ? "rounded-2xl rounded-br-md bg-white px-4 py-3 text-black"
-                            : "w-full max-w-3xl px-2 py-1 text-gray-200"
-                        }`}
-                      >
-                        {/* IMAGE */}
+            </div>
+          )}
 
-                        {message.image && (
-                          <img
-                            src={
-                              message.image
-                            }
-                            alt="Uploaded image"
-                            className="mb-3 max-h-[420px] max-w-full rounded-xl border border-black/10 object-contain"
-                          />
-                        )}
+          <div className="mx-auto w-full max-w-4xl px-4 py-8">
+            {activeChat?.messages.map(
+              (message, index) => (
+                <div
+                  key={index}
+                  className={`mb-8 flex ${
+                    message.role ===
+                    "user"
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-[85%] ${
+                      message.role ===
+                      "user"
+                        ? "rounded-2xl bg-[#2b2f36] px-4 py-3"
+                        : "w-full"
+                    }`}
+                  >
+                    {message.image && (
+                      <img
+                        src={
+                          message.image
+                        }
+                        alt="Uploaded"
+                        className="mb-3 max-h-[400px] max-w-full rounded-xl object-contain"
+                      />
+                    )}
 
-                        {/* TEXT */}
-
-                        {message.content && (
-                          <div className="whitespace-pre-wrap text-sm leading-7">
-                            {message.content}
-                          </div>
-                        )}
+                    {message.fileName && (
+                      <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
+                        📄
+                        <span className="truncate">
+                          {
+                            message.fileName
+                          }
+                        </span>
                       </div>
+                    )}
+
+                    <div className="whitespace-pre-wrap text-sm leading-7">
+                      {message.content}
                     </div>
-                  )
-                )}
 
-                {loading && (
-                  <div className="flex items-center gap-2 px-2 text-sm text-gray-500">
-                    <span className="animate-pulse">
-                      ●
-                    </span>
-
-                    My AI is thinking...
+                    {message.role ===
+                      "assistant" &&
+                      message.content && (
+                        <button
+                          onClick={() =>
+                            copyMessage(
+                              message.content
+                            )
+                          }
+                          className="mt-3 rounded-lg px-2 py-1 text-xs text-white/30 hover:bg-white/5 hover:text-white/70"
+                        >
+                          Copy
+                        </button>
+                      )}
                   </div>
-                )}
+                </div>
+              )
+            )}
 
-                <div ref={bottomRef} />
+            {(loading ||
+              fileLoading) && (
+              <div className="mb-8 flex items-center gap-3 text-sm text-white/45">
+                <div className="flex gap-1">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-white/40 [animation-delay:-0.2s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-white/40 [animation-delay:-0.1s]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-white/40" />
+                </div>
+
+                {fileLoading
+                  ? "Analyzing file..."
+                  : "Thinking..."}
               </div>
             )}
+
+            <div ref={bottomRef} />
           </div>
         </div>
 
-        {/* IMAGE PREVIEW */}
-
-        {selectedImage && (
-          <div className="mx-auto w-full max-w-4xl px-4">
-            <div className="mb-3 flex items-start gap-3 rounded-2xl border border-white/10 bg-[#15181d] p-3">
-              <img
-                src={selectedImage}
-                alt="Selected image"
-                className="h-20 w-20 rounded-xl object-cover"
-              />
-
-              <div className="flex-1">
-                <div className="text-sm font-medium">
-                  Image attached
-                </div>
-
-                <div className="mt-1 text-xs text-gray-500">
-                  Ask anything about
-                  this image.
-                </div>
-              </div>
-
-              <button
-                onClick={() =>
-                  setSelectedImage(
-                    null
-                  )
-                }
-                className="rounded-lg px-2 py-1 text-gray-400 hover:bg-white/10 hover:text-white"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* INPUT */}
+        {/* COMPOSER */}
 
         <div className="border-t border-white/10 bg-[#0b0d10] p-4">
-          <form
-            onSubmit={
-              handleSubmit
-            }
-            className="mx-auto max-w-4xl"
-          >
-            <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-[#15181d] p-2 shadow-2xl">
-              {/* IMAGE BUTTON */}
+          <div className="mx-auto max-w-4xl">
+            {(selectedImage ||
+              selectedFile) && (
+              <div className="mb-3 flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                {selectedImage && (
+                  <img
+                    src={
+                      selectedImage
+                    }
+                    alt="Preview"
+                    className="h-16 w-16 rounded-lg object-cover"
+                  />
+                )}
 
-              <button
-                type="button"
-                onClick={() =>
-                  fileInputRef.current?.click()
-                }
-                disabled={loading}
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
-                title="Upload image"
-              >
-                📎
-              </button>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">
+                    {selectedImage
+                      ? "Image attached"
+                      : selectedFile?.name}
+                  </div>
 
-              <input
-                ref={
-                  fileInputRef
-                }
-                type="file"
-                accept="image/*"
-                onChange={
-                  handleImageUpload
-                }
-                className="hidden"
-              />
+                  <div className="text-xs text-white/40">
+                    {selectedImage
+                      ? "Ready for image analysis"
+                      : "Ready for file analysis"}
+                  </div>
+                </div>
 
-              {/* TEXT */}
+                <button
+                  onClick={
+                    removeAttachment
+                  }
+                  className="rounded-lg px-3 py-2 text-white/40 hover:bg-white/10 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
+            <form
+              onSubmit={sendMessage}
+              className="rounded-2xl border border-white/10 bg-[#15181d] shadow-2xl"
+            >
               <textarea
                 value={input}
                 onChange={(event) =>
@@ -883,49 +894,96 @@ export default function Home() {
                     event.target.value
                   )
                 }
-                onKeyDown={(
-                  event
-                ) => {
+                onKeyDown={(event) => {
                   if (
                     event.key ===
                       "Enter" &&
                     !event.shiftKey
                   ) {
                     event.preventDefault();
-
-                    handleSubmit();
+                    sendMessage();
                   }
                 }}
-                placeholder={
-                  selectedImage
-                    ? "Ask something about this image..."
-                    : "Message My AI..."
-                }
+                placeholder="Message My AI..."
                 rows={1}
-                className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-gray-600"
+                className="max-h-40 min-h-[58px] w-full resize-none bg-transparent px-4 py-4 text-sm outline-none placeholder:text-white/30"
               />
 
-              {/* SEND */}
+              <div className="flex items-center justify-between px-3 pb-3">
+                <div className="flex items-center gap-1">
+                  {/* IMAGE UPLOAD */}
 
-              <button
-                type="submit"
-                disabled={
-                  loading ||
-                  (!input.trim() &&
-                    !selectedImage)
-                }
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white text-black transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                ↑
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      imageInputRef.current?.click()
+                    }
+                    className="rounded-lg p-2 text-white/45 hover:bg-white/10 hover:text-white"
+                    title="Upload image"
+                  >
+                    🖼️
+                  </button>
 
-            <div className="mt-2 text-center text-[11px] text-gray-600">
-              My AI can make mistakes.
-              Check important
-              information.
-            </div>
-          </form>
+                  {/* FILE UPLOAD */}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      fileInputRef.current?.click()
+                    }
+                    className="rounded-lg p-2 text-white/45 hover:bg-white/10 hover:text-white"
+                    title="Upload PDF, DOCX, Excel, CSV or TXT"
+                  >
+                    📎
+                  </button>
+
+                  <input
+                    ref={
+                      imageInputRef
+                    }
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={
+                      handleImageChange
+                    }
+                  />
+
+                  <input
+                    ref={
+                      fileInputRef
+                    }
+                    type="file"
+                    accept=".pdf,.docx,.xlsx,.xls,.csv,.txt"
+                    className="hidden"
+                    onChange={
+                      handleFileChange
+                    }
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={
+                    loading ||
+                    fileLoading ||
+                    (!input.trim() &&
+                      !selectedImage &&
+                      !selectedFile)
+                  }
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-30"
+                  title="Send"
+                >
+                  ↑
+                </button>
+              </div>
+            </form>
+
+            <p className="mt-2 text-center text-[11px] text-white/25">
+              My AI can make mistakes. Check
+              important information.
+            </p>
+          </div>
         </div>
       </section>
     </main>
