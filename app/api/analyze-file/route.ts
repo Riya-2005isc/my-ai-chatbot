@@ -6,19 +6,23 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 export const runtime = "nodejs";
 
 const MODEL = "openai/gpt-oss-20b";
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
 const MAX_TEXT_LENGTH = 50000;
-const MAX_FILE_SIZE = 15 * 1024 * 1024;
 
 function jsonResponse(
   data: Record<string, unknown>,
   status = 200
 ) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-    },
-  });
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: {
+        "Content-Type":
+          "application/json; charset=utf-8",
+      },
+    }
+  );
 }
 
 function cleanText(text: string) {
@@ -51,17 +55,20 @@ async function extractPDF(buffer: Buffer) {
     pageNumber <= pdf.numPages;
     pageNumber++
   ) {
-    const page = await pdf.getPage(pageNumber);
+    const page =
+      await pdf.getPage(pageNumber);
 
-    const content = await page.getTextContent();
+    const content =
+      await page.getTextContent();
 
-    const pageText = content.items
-      .map((item: any) => {
-        return typeof item?.str === "string"
-          ? item.str
-          : "";
-      })
-      .join(" ");
+    const pageText =
+      content.items
+        .map((item: any) =>
+          typeof item?.str === "string"
+            ? item.str
+            : ""
+        )
+        .join(" ");
 
     pages.push(
       `PAGE ${pageNumber}\n${pageText}`
@@ -74,7 +81,9 @@ async function extractPDF(buffer: Buffer) {
   };
 }
 
-async function extractDOCX(buffer: Buffer) {
+async function extractDOCX(
+  buffer: Buffer
+) {
   const result =
     await mammoth.extractRawText({
       buffer,
@@ -83,10 +92,13 @@ async function extractDOCX(buffer: Buffer) {
   return result.value;
 }
 
-function extractExcel(buffer: Buffer) {
-  const workbook = XLSX.read(buffer, {
-    type: "buffer",
-  });
+function extractExcel(
+  buffer: Buffer
+) {
+  const workbook =
+    XLSX.read(buffer, {
+      type: "buffer",
+    });
 
   const sheets: string[] = [];
 
@@ -95,7 +107,9 @@ function extractExcel(buffer: Buffer) {
       workbook.Sheets[sheetName];
 
     const csv =
-      XLSX.utils.sheet_to_csv(worksheet);
+      XLSX.utils.sheet_to_csv(
+        worksheet
+      );
 
     sheets.push(
       `SHEET: ${sheetName}\n${csv}`
@@ -105,24 +119,32 @@ function extractExcel(buffer: Buffer) {
   return sheets.join("\n\n");
 }
 
-function extractCSV(buffer: Buffer) {
+function extractCSV(
+  buffer: Buffer
+) {
   return buffer.toString("utf-8");
 }
 
-function extractTXT(buffer: Buffer) {
+function extractTXT(
+  buffer: Buffer
+) {
   return buffer.toString("utf-8");
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
-    console.log("=== FILE ANALYSIS START ===");
+    console.log(
+      "=== FILE ANALYSIS START ==="
+    );
 
     const apiKey =
       process.env.GROQ_API_KEY;
 
     if (!apiKey) {
       console.error(
-        "GROQ_API_KEY is missing."
+        "GROQ_API_KEY is missing"
       );
 
       return jsonResponse(
@@ -161,7 +183,10 @@ export async function POST(request: Request) {
 
     console.log(
       "File:",
-      file.name,
+      file.name
+    );
+
+    console.log(
       "Size:",
       file.size
     );
@@ -185,7 +210,7 @@ export async function POST(request: Request) {
         {
           success: false,
           error:
-            "File is too large. Please upload a file smaller than 15 MB.",
+            "File is too large. Please upload a file smaller than 4 MB.",
         },
         400
       );
@@ -203,50 +228,110 @@ export async function POST(request: Request) {
     let extractedText = "";
     let fileInformation = "";
 
-    if (fileName.endsWith(".pdf")) {
+    /*
+     * PDF
+     */
+
+    if (
+      fileName.endsWith(".pdf")
+    ) {
+      console.log(
+        "Extracting PDF..."
+      );
+
       const result =
-        await extractPDF(buffer);
+        await extractPDF(
+          buffer
+        );
 
       extractedText =
         result.text;
 
       fileInformation =
         `PDF document with ${result.pages} page(s).`;
-    } else if (
+    }
+
+    /*
+     * DOCX
+     */
+
+    else if (
       fileName.endsWith(".docx")
     ) {
+      console.log(
+        "Extracting DOCX..."
+      );
+
       extractedText =
-        await extractDOCX(buffer);
+        await extractDOCX(
+          buffer
+        );
 
       fileInformation =
         "Microsoft Word DOCX document.";
-    } else if (
+    }
+
+    /*
+     * Excel
+     */
+
+    else if (
       fileName.endsWith(".xlsx") ||
       fileName.endsWith(".xls")
     ) {
+      console.log(
+        "Extracting Excel..."
+      );
+
       extractedText =
         extractExcel(buffer);
 
       fileInformation =
         "Microsoft Excel spreadsheet.";
-    } else if (
+    }
+
+    /*
+     * CSV
+     */
+
+    else if (
       fileName.endsWith(".csv")
     ) {
+      console.log(
+        "Extracting CSV..."
+      );
+
       extractedText =
         extractCSV(buffer);
 
       fileInformation =
         "CSV dataset.";
-    } else if (
+    }
+
+    /*
+     * TXT
+     */
+
+    else if (
       fileName.endsWith(".txt") ||
       file.type === "text/plain"
     ) {
+      console.log(
+        "Extracting TXT..."
+      );
+
       extractedText =
         extractTXT(buffer);
 
       fileInformation =
         "Plain text document.";
-    } else {
+    }
+
+    /*
+     * Unsupported
+     */
+
+    else {
       return jsonResponse(
         {
           success: false,
@@ -258,7 +343,14 @@ export async function POST(request: Request) {
     }
 
     extractedText =
-      cleanText(extractedText);
+      cleanText(
+        extractedText
+      );
+
+    console.log(
+      "Extracted text length:",
+      extractedText.length
+    );
 
     if (!extractedText) {
       return jsonResponse(
@@ -272,11 +364,16 @@ export async function POST(request: Request) {
     }
 
     extractedText =
-      limitText(extractedText);
+      limitText(
+        extractedText
+      );
+
+    /*
+     * Groq
+     */
 
     console.log(
-      "Extracted text length:",
-      extractedText.length
+      "Sending document to Groq..."
     );
 
     const client =
@@ -291,15 +388,16 @@ You are My AI, a professional document and data analysis assistant.
 
 The user uploaded this file:
 
-File name: ${file.name}
-File type: ${fileInformation}
+File name:
+${file.name}
 
-The user's request is:
+File type:
+${fileInformation}
 
+User request:
 ${question}
 
-Here is the extracted content from the file:
-
+Extracted file content:
 -------------------------
 ${extractedText}
 -------------------------
@@ -311,41 +409,39 @@ Important rules:
 - Use only information available in the supplied file.
 - Do not invent facts.
 - If the requested information is not available, clearly say so.
-- Explain the answer naturally and professionally.
+- Answer the user's specific question first.
+- Explain information naturally and professionally.
 - Do not use unnecessary Markdown headings.
 - Prefer normal paragraphs and simple bullet points.
-- Use tables only when they genuinely make the information easier to understand.
-- For datasets, identify useful patterns, trends, important values and anomalies when relevant.
-- For academic documents, explain important concepts clearly.
-- For business documents, highlight useful insights and important information.
-- If the user asks for a summary, give a concise but useful summary.
-- Answer the user's specific question first.
+- Use tables only when genuinely useful.
+- For datasets, identify useful patterns, trends and important values when relevant.
+- For academic documents, explain concepts clearly.
+- For business documents, highlight useful insights.
+- If the user asks for a summary, provide a concise but useful summary.
 `;
 
-    console.log(
-      "Sending document to Groq..."
-    );
-
     const completion =
-      await client.chat.completions.create({
-        model: MODEL,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a careful document analysis assistant. Use only the supplied file content.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.2,
-      });
+      await client.chat.completions.create(
+        {
+          model: MODEL,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a careful document analysis assistant. Use only the supplied file content.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.2,
+        }
+      );
 
     const answer =
-      completion.choices?.[0]?.message
-        ?.content;
+      completion.choices?.[0]
+        ?.message?.content;
 
     if (!answer) {
       return jsonResponse(
@@ -359,7 +455,7 @@ Important rules:
     }
 
     console.log(
-      "=== FILE ANALYSIS COMPLETE ==="
+      "=== FILE ANALYSIS SUCCESS ==="
     );
 
     return jsonResponse({
@@ -383,10 +479,10 @@ Important rules:
     return jsonResponse(
       {
         success: false,
-        error: errorMessage,
+        error:
+          `Server error: ${errorMessage}`,
       },
       500
     );
   }
 }
-
