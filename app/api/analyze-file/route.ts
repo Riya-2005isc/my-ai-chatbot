@@ -1,12 +1,11 @@
 import OpenAI from "openai";
-import pdf from "pdf-parse";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export const runtime = "nodejs";
 
 const MODEL = "openai/gpt-oss-20b";
-
 const MAX_TEXT_LENGTH = 50000;
 
 function limitText(text: string) {
@@ -28,11 +27,31 @@ function cleanText(text: string) {
 }
 
 async function extractPDF(buffer: Buffer) {
-  const result = await pdf(buffer);
+  const pdf = await getDocument({
+    data: new Uint8Array(buffer),
+  }).promise;
+
+  const pages: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    const page = await pdf.getPage(pageNumber);
+
+    const content = await page.getTextContent();
+
+    const pageText = content.items
+      .map((item: any) => {
+        return typeof item.str === "string" ? item.str : "";
+      })
+      .join(" ");
+
+    pages.push(
+      `===== PAGE ${pageNumber} =====\n${pageText}`
+    );
+  }
 
   return {
-    text: result.text,
-    pages: result.numpages,
+    text: pages.join("\n\n"),
+    pages: pdf.numPages,
   };
 }
 
@@ -56,9 +75,7 @@ function extractExcel(buffer: Buffer) {
   for (const sheetName of workbook.SheetNames) {
     const worksheet = workbook.Sheets[sheetName];
 
-    const csv = XLSX.utils.sheet_to_csv(
-      worksheet
-    );
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
 
     sheets.push(
       `\n===== SHEET: ${sheetName} =====\n${csv}`
@@ -97,6 +114,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
 
     const file = formData.get("file");
+
     const userQuestion =
       formData.get("question")?.toString() ||
       "Analyze this file and provide the most important information.";
@@ -147,9 +165,7 @@ export async function POST(request: Request) {
       extractedText = result.text;
 
       fileInformation = `PDF document with ${result.pages} page(s).`;
-    } else if (
-      fileName.endsWith(".docx")
-    ) {
+    } else if (fileName.endsWith(".docx")) {
       const result = await extractDOCX(buffer);
 
       extractedText = result.text;
@@ -161,11 +177,8 @@ export async function POST(request: Request) {
     ) {
       extractedText = extractExcel(buffer);
 
-      fileInformation =
-        "Microsoft Excel spreadsheet.";
-    } else if (
-      fileName.endsWith(".csv")
-    ) {
+      fileInformation = "Microsoft Excel spreadsheet.";
+    } else if (fileName.endsWith(".csv")) {
       extractedText = extractCSV(buffer);
 
       fileInformation = "CSV dataset.";
@@ -191,9 +204,7 @@ export async function POST(request: Request) {
       );
     }
 
-    extractedText = cleanText(
-      extractedText
-    );
+    extractedText = cleanText(extractedText);
 
     if (!extractedText) {
       return new Response(
@@ -210,14 +221,11 @@ export async function POST(request: Request) {
       );
     }
 
-    extractedText = limitText(
-      extractedText
-    );
+    extractedText = limitText(extractedText);
 
     const client = new OpenAI({
       apiKey,
-      baseURL:
-        "https://api.groq.com/openai/v1",
+      baseURL: "https://api.groq.com/openai/v1",
     });
 
     const prompt = `
@@ -283,10 +291,7 @@ Instructions:
       }
     );
   } catch (error) {
-    console.error(
-      "File analysis error:",
-      error
-    );
+    console.error("File analysis error:", error);
 
     return new Response(
       JSON.stringify({
