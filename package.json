@@ -1,6 +1,6 @@
 {
   "name": "my-ai-chatbot",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,10 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "mammoth": "^1.11.0",
     "next": "latest",
     "openai": "latest",
+    "pdf-parse": "1.1.1",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "latest",
