@@ -1,15 +1,17 @@
 "use client";
 
 import {
-  ChangeEvent,
   FormEvent,
+  KeyboardEvent,
   useEffect,
   useRef,
   useState,
 } from "react";
 
+type Role = "user" | "assistant";
+
 type Message = {
-  role: "user" | "assistant";
+  role: Role;
   content: string;
   image?: string;
   fileName?: string;
@@ -19,69 +21,58 @@ type Chat = {
   id: string;
   title: string;
   messages: Message[];
-  createdAt: number;
 };
 
-const STORAGE_KEY = "my-ai-chat-history";
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
 
-function createChat(): Chat {
-  return {
-    id: crypto.randomUUID(),
-    title: "New Chat",
-    messages: [],
-    createdAt: Date.now(),
-  };
-}
+const STORAGE_KEY = "my-ai-chats";
+
+const createChat = (): Chat => ({
+  id: crypto.randomUUID(),
+  title: "New Chat",
+  messages: [],
+});
 
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
-  const [activeChatId, setActiveChatId] =
-    useState<string>("");
-
+  const [activeChatId, setActiveChatId] = useState<string>("");
   const [input, setInput] = useState("");
-  const [loading, setLoading] =
-    useState(false);
 
-  const [selectedImage, setSelectedImage] =
-    useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fileLoading, setFileLoading] = useState(false);
 
-  const [selectedFile, setSelectedFile] =
-    useState<File | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const [fileLoading, setFileLoading] =
-    useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(
+    null
+  );
 
-  const [sidebarOpen, setSidebarOpen] =
-    useState(true);
+  const [selectedFile, setSelectedFile] = useState<File | null>(
+    null
+  );
 
-  const fileInputRef =
-    useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const imageInputRef =
-    useRef<HTMLInputElement>(null);
-
-  const bottomRef =
-    useRef<HTMLDivElement>(null);
-
+  /*
+   * Load chat history
+   */
   useEffect(() => {
-    const saved =
-      localStorage.getItem(STORAGE_KEY);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
 
-    if (saved) {
-      try {
+      if (saved) {
         const parsed = JSON.parse(saved);
 
-        if (
-          Array.isArray(parsed) &&
-          parsed.length > 0
-        ) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           setChats(parsed);
           setActiveChatId(parsed[0].id);
           return;
         }
-      } catch {
-        // Ignore invalid local storage
       }
+    } catch {
+      // Ignore corrupted local storage.
     }
 
     const firstChat = createChat();
@@ -90,6 +81,9 @@ export default function Home() {
     setActiveChatId(firstChat.id);
   }, []);
 
+  /*
+   * Save chat history
+   */
   useEffect(() => {
     if (chats.length > 0) {
       localStorage.setItem(
@@ -99,23 +93,33 @@ export default function Home() {
     }
   }, [chats]);
 
+  /*
+   * Scroll to bottom
+   */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
       behavior: "smooth",
     });
-  }, [chats, loading]);
+  }, [
+    chats,
+    activeChatId,
+    loading,
+    fileLoading,
+  ]);
 
   const activeChat =
-    chats.find(
-      (chat) => chat.id === activeChatId
-    ) || null;
+    chats.find((chat) => chat.id === activeChatId) ||
+    null;
 
+  /*
+   * Update a specific chat
+   */
   function updateChat(
     chatId: string,
     updater: (chat: Chat) => Chat
   ) {
-    setChats((previous) =>
-      previous.map((chat) =>
+    setChats((currentChats) =>
+      currentChats.map((chat) =>
         chat.id === chatId
           ? updater(chat)
           : chat
@@ -123,28 +127,33 @@ export default function Home() {
     );
   }
 
+  /*
+   * Create new chat
+   */
   function handleNewChat() {
     const newChat = createChat();
 
-    setChats((previous) => [
+    setChats((currentChats) => [
       newChat,
-      ...previous,
+      ...currentChats,
     ]);
 
     setActiveChatId(newChat.id);
+
     setInput("");
     setSelectedImage(null);
     setSelectedFile(null);
   }
 
-  function handleDeleteChat(
-    chatId: string
-  ) {
-    const remaining = chats.filter(
+  /*
+   * Delete chat
+   */
+  function handleDeleteChat(chatId: string) {
+    const remainingChats = chats.filter(
       (chat) => chat.id !== chatId
     );
 
-    if (remaining.length === 0) {
+    if (remainingChats.length === 0) {
       const newChat = createChat();
 
       setChats([newChat]);
@@ -152,17 +161,20 @@ export default function Home() {
       return;
     }
 
-    setChats(remaining);
+    setChats(remainingChats);
 
     if (activeChatId === chatId) {
       setActiveChatId(
-        remaining[0].id
+        remainingChats[0].id
       );
     }
   }
 
+  /*
+   * Change image
+   */
   function handleImageChange(
-    event: ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>
   ) {
     const file =
       event.target.files?.[0];
@@ -170,40 +182,50 @@ export default function Home() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
+      alert("Please select a valid image.");
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_FILE_SIZE) {
       alert(
-        "Please choose an image smaller than 10 MB."
+        "This image is too large. Please choose an image smaller than 4 MB."
       );
       return;
     }
 
-    const reader =
-      new FileReader();
+    const reader = new FileReader();
 
     reader.onload = () => {
-      setSelectedImage(
-        reader.result as string
-      );
+      if (typeof reader.result === "string") {
+        setSelectedImage(reader.result);
+        setSelectedFile(null);
+      }
     };
 
     reader.readAsDataURL(file);
 
-    setSelectedFile(null);
-
     event.target.value = "";
   }
 
+  /*
+   * Change document file
+   */
   function handleFileChange(
-    event: ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>
   ) {
     const file =
       event.target.files?.[0];
 
     if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      alert(
+        "This file is too large. Please upload a file smaller than 4 MB."
+      );
+
+      event.target.value = "";
+      return;
+    }
 
     const allowedExtensions = [
       ".pdf",
@@ -214,26 +236,21 @@ export default function Home() {
       ".txt",
     ];
 
-    const lowerName =
+    const fileName =
       file.name.toLowerCase();
 
-    const valid =
+    const validExtension =
       allowedExtensions.some(
         (extension) =>
-          lowerName.endsWith(extension)
+          fileName.endsWith(extension)
       );
 
-    if (!valid) {
+    if (!validExtension) {
       alert(
         "Supported files: PDF, DOCX, XLSX, XLS, CSV and TXT."
       );
-      return;
-    }
 
-    if (file.size > 15 * 1024 * 1024) {
-      alert(
-        "Please choose a file smaller than 15 MB."
-      );
+      event.target.value = "";
       return;
     }
 
@@ -243,39 +260,39 @@ export default function Home() {
     event.target.value = "";
   }
 
+  /*
+   * Remove attachment
+   */
   function removeAttachment() {
     setSelectedImage(null);
     setSelectedFile(null);
   }
 
+  /*
+   * Send normal chat message / image
+   */
   async function sendMessage(
     event?: FormEvent
   ) {
     event?.preventDefault();
 
-    if (loading || fileLoading) {
-      return;
-    }
+    if (!activeChat) return;
 
-    const text = input.trim();
+    const messageText = input.trim();
 
     if (
-      !text &&
+      !messageText &&
       !selectedImage &&
       !selectedFile
     ) {
       return;
     }
 
-    if (!activeChat) {
-      return;
-    }
-
     if (selectedFile) {
       await analyzeFile(
         selectedFile,
-        text ||
-          "Analyze this file and give me the most important information."
+        messageText ||
+          "Analyze this file and explain the most important information."
       );
 
       return;
@@ -284,182 +301,122 @@ export default function Home() {
     const userMessage: Message = {
       role: "user",
       content:
-        text ||
+        messageText ||
         "Please analyze this image.",
-      image: selectedImage || undefined,
+      ...(selectedImage
+        ? { image: selectedImage }
+        : {}),
     };
 
-    const updatedMessages = [
-      ...activeChat.messages,
-      userMessage,
-    ];
-
-    const title =
-      activeChat.messages.length === 0
-        ? text.slice(0, 40) ||
-          "Image Analysis"
-        : activeChat.title;
+    const chatId = activeChat.id;
 
     updateChat(
-      activeChat.id,
-      (chat) => ({
-        ...chat,
-        title:
-          chat.title === "New Chat"
-            ? title
-            : chat.title,
-        messages: updatedMessages,
-      })
+      chatId,
+      (chat) => {
+        const newMessages = [
+          ...chat.messages,
+          userMessage,
+        ];
+
+        let title = chat.title;
+
+        if (
+          chat.messages.length === 0
+        ) {
+          title =
+            messageText ||
+            "Image Analysis";
+
+          if (title.length > 40) {
+            title =
+              title.slice(0, 40) +
+              "...";
+          }
+        }
+
+        return {
+          ...chat,
+          title,
+          messages: newMessages,
+        };
+      }
     );
 
     setInput("");
     setSelectedImage(null);
+    setSelectedFile(null);
+
     setLoading(true);
 
     try {
-      const apiMessages =
-        updatedMessages.map(
-          (message) => {
-            if (message.image) {
-              return {
-                role: message.role,
-                content: [
-                  {
-                    type: "text",
-                    text: message.content,
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: message.image,
-                    },
-                  },
-                ],
-              };
-            }
-
-            return {
-              role: message.role,
-              content: message.content,
-            };
-          }
+      const updatedChat =
+        chats.find(
+          (chat) => chat.id === chatId
         );
 
-      const response =
-        await fetch("/api/chat", {
+      const previousMessages =
+        updatedChat?.messages || [];
+
+      const messagesForAPI = [
+        ...previousMessages,
+        userMessage,
+      ].map((message) => {
+        if (message.image) {
+          return {
+            role: message.role,
+            content: [
+              {
+                type: "text",
+                text: message.content,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: message.image,
+                },
+              },
+            ],
+          };
+        }
+
+        return {
+          role: message.role,
+          content: message.content,
+        };
+      });
+
+      const response = await fetch(
+        "/api/chat",
+        {
           method: "POST",
           headers: {
             "Content-Type":
               "application/json",
           },
           body: JSON.stringify({
-            messages: apiMessages,
+            messages: messagesForAPI,
           }),
-        });
-
-      if (!response.ok) {
-        let errorMessage =
-          "Something went wrong.";
-
-        try {
-          const error =
-            await response.json();
-
-          errorMessage =
-            error.error ||
-            errorMessage;
-        } catch {
-          // Ignore JSON parsing errors
         }
-
-        throw new Error(
-          errorMessage
-        );
-      }
-
-      if (!response.body) {
-        throw new Error(
-          "No response received from the server."
-        );
-      }
-
-      const reader =
-        response.body.getReader();
-
-      const decoder =
-        new TextDecoder();
-
-      let assistantText = "";
-
-      updateChat(
-        activeChat.id,
-        (chat) => ({
-          ...chat,
-          messages: [
-            ...chat.messages,
-            {
-              role: "assistant",
-              content: "",
-            },
-          ],
-        })
       );
 
-      while (true) {
-        const {
-          value,
-          done,
-        } = await reader.read();
+      const responseText =
+        await response.text();
 
-        if (done) break;
-
-        const chunk =
-          decoder.decode(value, {
-            stream: true,
-          });
-
-        assistantText += chunk;
-
-        updateChat(
-          activeChat.id,
-          (chat) => {
-            const messages = [
-              ...chat.messages,
-            ];
-
-            const last =
-              messages[
-                messages.length - 1
-              ];
-
-            if (
-              last?.role ===
-              "assistant"
-            ) {
-              messages[
-                messages.length - 1
-              ] = {
-                ...last,
-                content:
-                  assistantText,
-              };
-            }
-
-            return {
-              ...chat,
-              messages,
-            };
-          }
+      if (!response.ok) {
+        throw new Error(
+          responseText ||
+            `Chat request failed with status ${response.status}.`
         );
       }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong.";
+
+      if (!responseText.trim()) {
+        throw new Error(
+          "The AI returned an empty response."
+        );
+      }
 
       updateChat(
-        activeChat.id,
+        chatId,
         (chat) => ({
           ...chat,
           messages: [
@@ -467,7 +424,27 @@ export default function Home() {
             {
               role: "assistant",
               content:
-                `Sorry, I couldn't complete that request.\n\n${message}`,
+                responseText,
+            },
+          ],
+        })
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
+
+      updateChat(
+        chatId,
+        (chat) => ({
+          ...chat,
+          messages: [
+            ...chat.messages,
+            {
+              role: "assistant",
+              content:
+                `I couldn't complete that request.\n\n${message}`,
             },
           ],
         })
@@ -477,39 +454,66 @@ export default function Home() {
     }
   }
 
+  /*
+   * Analyze uploaded file
+   */
   async function analyzeFile(
     file: File,
     question: string
   ) {
     if (!activeChat) return;
 
-    setFileLoading(true);
+    if (file.size > MAX_FILE_SIZE) {
+      updateChat(
+        activeChat.id,
+        (chat) => ({
+          ...chat,
+          messages: [
+            ...chat.messages,
+            {
+              role: "assistant",
+              content:
+                "This file is too large. Please upload a file smaller than 4 MB.",
+            },
+          ],
+        })
+      );
 
-    const userMessage: Message = {
-      role: "user",
-      content: question,
-      fileName: file.name,
-    };
+      setSelectedFile(null);
+      return;
+    }
 
-    const newMessages = [
-      ...activeChat.messages,
-      userMessage,
-    ];
+    const chatId = activeChat.id;
 
     updateChat(
-      activeChat.id,
+      chatId,
       (chat) => ({
         ...chat,
         title:
           chat.messages.length === 0
-            ? file.name.slice(0, 40)
+            ? file.name.length > 40
+              ? file.name.slice(0, 40) +
+                "..."
+              : file.name
             : chat.title,
-        messages: newMessages,
+        messages: [
+          ...chat.messages,
+          {
+            role: "user",
+            content:
+              question ||
+              "Analyze this file.",
+            fileName: file.name,
+          },
+        ],
       })
     );
 
     setInput("");
     setSelectedFile(null);
+    setSelectedImage(null);
+
+    setFileLoading(true);
 
     try {
       const formData =
@@ -522,7 +526,8 @@ export default function Home() {
 
       formData.append(
         "question",
-        question
+        question ||
+          "Analyze this file and explain the most important information."
       );
 
       const response =
@@ -534,18 +539,62 @@ export default function Home() {
           }
         );
 
-      const result =
-        await response.json();
+      /*
+       * IMPORTANT:
+       * Do not call response.json()
+       * directly.
+       *
+       * Vercel may return plain text,
+       * an empty response, or a platform
+       * error such as FUNCTION_PAYLOAD_TOO_LARGE.
+       */
+      const rawResponse =
+        await response.text();
+
+      let result: {
+        success?: boolean;
+        answer?: string;
+        error?: string;
+      } | null = null;
+
+      if (rawResponse.trim()) {
+        try {
+          result =
+            JSON.parse(
+              rawResponse
+            );
+        } catch {
+          throw new Error(
+            response.ok
+              ? "The server returned an invalid response."
+              : rawResponse.trim()
+          );
+        }
+      }
 
       if (!response.ok) {
         throw new Error(
+          result?.error ||
+            rawResponse.trim() ||
+            `File analysis failed. Server returned ${response.status}.`
+        );
+      }
+
+      if (!result) {
+        throw new Error(
+          "The server returned an empty response."
+        );
+      }
+
+      if (!result.answer) {
+        throw new Error(
           result.error ||
-            "File analysis failed."
+            "The AI did not return an answer for this file."
         );
       }
 
       updateChat(
-        activeChat.id,
+        chatId,
         (chat) => ({
           ...chat,
           messages: [
@@ -553,7 +602,7 @@ export default function Home() {
             {
               role: "assistant",
               content:
-                result.answer,
+                result.answer!,
             },
           ],
         })
@@ -564,8 +613,30 @@ export default function Home() {
           ? error.message
           : "File analysis failed.";
 
+      /*
+       * Make Vercel's payload error
+       * understandable to the user.
+       */
+      let friendlyMessage =
+        message;
+
+      if (
+        message.includes(
+          "FUNCTION_PAYLOAD_TOO_LARGE"
+        ) ||
+        message.includes(
+          "Request Entity Too Large"
+        ) ||
+        message.includes(
+          "Payload Too Large"
+        )
+      ) {
+        friendlyMessage =
+          "This file is too large for the current deployment. Please upload a file smaller than 4 MB.";
+      }
+
       updateChat(
-        activeChat.id,
+        chatId,
         (chat) => ({
           ...chat,
           messages: [
@@ -573,7 +644,7 @@ export default function Home() {
             {
               role: "assistant",
               content:
-                `I couldn't analyze this file.\n\n${message}`,
+                `I couldn't analyze this file.\n\n${friendlyMessage}`,
             },
           ],
         })
@@ -583,6 +654,9 @@ export default function Home() {
     }
   }
 
+  /*
+   * Copy assistant message
+   */
   async function copyMessage(
     content: string
   ) {
@@ -594,6 +668,27 @@ export default function Home() {
       alert(
         "Unable to copy the message."
       );
+    }
+  }
+
+  /*
+   * Enter key
+   */
+  function handleKeyDown(
+    event: KeyboardEvent<HTMLTextAreaElement>
+  ) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+
+      if (
+        !loading &&
+        !fileLoading
+      ) {
+        sendMessage();
+      }
     }
   }
 
@@ -617,6 +712,7 @@ export default function Home() {
               <span className="text-lg">
                 +
               </span>
+
               New chat
             </button>
           </div>
@@ -694,6 +790,7 @@ export default function Home() {
               <div className="font-semibold">
                 My AI
               </div>
+
               <div className="text-[11px] text-white/35">
                 Groq AI Assistant
               </div>
@@ -790,7 +887,10 @@ export default function Home() {
 
                     {message.fileName && (
                       <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60">
-                        📄
+                        <span>
+                          📄
+                        </span>
+
                         <span className="truncate">
                           {
                             message.fileName
@@ -827,7 +927,9 @@ export default function Home() {
               <div className="mb-8 flex items-center gap-3 text-sm text-white/45">
                 <div className="flex gap-1">
                   <span className="h-2 w-2 animate-bounce rounded-full bg-white/40 [animation-delay:-0.2s]" />
+
                   <span className="h-2 w-2 animate-bounce rounded-full bg-white/40 [animation-delay:-0.1s]" />
+
                   <span className="h-2 w-2 animate-bounce rounded-full bg-white/40" />
                 </div>
 
@@ -894,16 +996,9 @@ export default function Home() {
                     event.target.value
                   )
                 }
-                onKeyDown={(event) => {
-                  if (
-                    event.key ===
-                      "Enter" &&
-                    !event.shiftKey
-                  ) {
-                    event.preventDefault();
-                    sendMessage();
-                  }
-                }}
+                onKeyDown={
+                  handleKeyDown
+                }
                 placeholder="Message My AI..."
                 rows={1}
                 className="max-h-40 min-h-[58px] w-full resize-none bg-transparent px-4 py-4 text-sm outline-none placeholder:text-white/30"
