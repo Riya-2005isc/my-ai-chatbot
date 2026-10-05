@@ -7,6 +7,26 @@ export const runtime = "nodejs";
 
 const MODEL = "openai/gpt-oss-20b";
 const MAX_TEXT_LENGTH = 50000;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
+
+function jsonResponse(
+  data: Record<string, unknown>,
+  status = 200
+) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  });
+}
+
+function cleanText(text: string) {
+  return text
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 function limitText(text: string) {
   if (text.length <= MAX_TEXT_LENGTH) {
@@ -19,13 +39,6 @@ function limitText(text: string) {
   );
 }
 
-function cleanText(text: string) {
-  return text
-    .replace(/\r/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 async function extractPDF(buffer: Buffer) {
   const pdf = await getDocument({
     data: new Uint8Array(buffer),
@@ -33,19 +46,25 @@ async function extractPDF(buffer: Buffer) {
 
   const pages: string[] = [];
 
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+  for (
+    let pageNumber = 1;
+    pageNumber <= pdf.numPages;
+    pageNumber++
+  ) {
     const page = await pdf.getPage(pageNumber);
 
     const content = await page.getTextContent();
 
     const pageText = content.items
       .map((item: any) => {
-        return typeof item.str === "string" ? item.str : "";
+        return typeof item?.str === "string"
+          ? item.str
+          : "";
       })
       .join(" ");
 
     pages.push(
-      `===== PAGE ${pageNumber} =====\n${pageText}`
+      `PAGE ${pageNumber}\n${pageText}`
     );
   }
 
@@ -56,13 +75,12 @@ async function extractPDF(buffer: Buffer) {
 }
 
 async function extractDOCX(buffer: Buffer) {
-  const result = await mammoth.extractRawText({
-    buffer,
-  });
+  const result =
+    await mammoth.extractRawText({
+      buffer,
+    });
 
-  return {
-    text: result.value,
-  };
+  return result.value;
 }
 
 function extractExcel(buffer: Buffer) {
@@ -73,16 +91,18 @@ function extractExcel(buffer: Buffer) {
   const sheets: string[] = [];
 
   for (const sheetName of workbook.SheetNames) {
-    const worksheet = workbook.Sheets[sheetName];
+    const worksheet =
+      workbook.Sheets[sheetName];
 
-    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    const csv =
+      XLSX.utils.sheet_to_csv(worksheet);
 
     sheets.push(
-      `\n===== SHEET: ${sheetName} =====\n${csv}`
+      `SHEET: ${sheetName}\n${csv}`
     );
   }
 
-  return sheets.join("\n");
+  return sheets.join("\n\n");
 }
 
 function extractCSV(buffer: Buffer) {
@@ -95,165 +115,216 @@ function extractTXT(buffer: Buffer) {
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.GROQ_API_KEY;
+    console.log("=== FILE ANALYSIS START ===");
+
+    const apiKey =
+      process.env.GROQ_API_KEY;
 
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({
-          error: "GROQ_API_KEY is missing.",
-        }),
+      console.error(
+        "GROQ_API_KEY is missing."
+      );
+
+      return jsonResponse(
         {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+          success: false,
+          error:
+            "GROQ_API_KEY is missing from the server environment.",
+        },
+        500
       );
     }
 
-    const formData = await request.formData();
+    const formData =
+      await request.formData();
 
-    const file = formData.get("file");
+    const file =
+      formData.get("file");
 
-    const userQuestion =
-      formData.get("question")?.toString() ||
-      "Analyze this file and provide the most important information.";
+    const question =
+      formData
+        .get("question")
+        ?.toString()
+        .trim() ||
+      "Analyze this file and explain the most important information.";
 
     if (!(file instanceof File)) {
-      return new Response(
-        JSON.stringify({
-          error: "No file was uploaded.",
-        }),
+      return jsonResponse(
         {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+          success: false,
+          error:
+            "No file was uploaded.",
+        },
+        400
       );
     }
 
-    const maxFileSize = 15 * 1024 * 1024;
+    console.log(
+      "File:",
+      file.name,
+      "Size:",
+      file.size
+    );
 
-    if (file.size > maxFileSize) {
-      return new Response(
-        JSON.stringify({
+    if (file.size === 0) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            "The uploaded file is empty.",
+        },
+        400
+      );
+    }
+
+    if (
+      file.size >
+      MAX_FILE_SIZE
+    ) {
+      return jsonResponse(
+        {
+          success: false,
           error:
             "File is too large. Please upload a file smaller than 15 MB.",
-        }),
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+        },
+        400
       );
     }
 
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer =
+      await file.arrayBuffer();
 
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer =
+      Buffer.from(arrayBuffer);
 
-    const fileName = file.name.toLowerCase();
+    const fileName =
+      file.name.toLowerCase();
 
     let extractedText = "";
     let fileInformation = "";
 
     if (fileName.endsWith(".pdf")) {
-      const result = await extractPDF(buffer);
+      const result =
+        await extractPDF(buffer);
 
-      extractedText = result.text;
+      extractedText =
+        result.text;
 
-      fileInformation = `PDF document with ${result.pages} page(s).`;
-    } else if (fileName.endsWith(".docx")) {
-      const result = await extractDOCX(buffer);
+      fileInformation =
+        `PDF document with ${result.pages} page(s).`;
+    } else if (
+      fileName.endsWith(".docx")
+    ) {
+      extractedText =
+        await extractDOCX(buffer);
 
-      extractedText = result.text;
-
-      fileInformation = "Microsoft Word DOCX document.";
+      fileInformation =
+        "Microsoft Word DOCX document.";
     } else if (
       fileName.endsWith(".xlsx") ||
       fileName.endsWith(".xls")
     ) {
-      extractedText = extractExcel(buffer);
+      extractedText =
+        extractExcel(buffer);
 
-      fileInformation = "Microsoft Excel spreadsheet.";
-    } else if (fileName.endsWith(".csv")) {
-      extractedText = extractCSV(buffer);
+      fileInformation =
+        "Microsoft Excel spreadsheet.";
+    } else if (
+      fileName.endsWith(".csv")
+    ) {
+      extractedText =
+        extractCSV(buffer);
 
-      fileInformation = "CSV dataset.";
+      fileInformation =
+        "CSV dataset.";
     } else if (
       fileName.endsWith(".txt") ||
       file.type === "text/plain"
     ) {
-      extractedText = extractTXT(buffer);
+      extractedText =
+        extractTXT(buffer);
 
-      fileInformation = "Plain text document.";
+      fileInformation =
+        "Plain text document.";
     } else {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
+          success: false,
           error:
             "Unsupported file type. Please upload PDF, DOCX, XLSX, XLS, CSV or TXT.",
-        }),
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+        },
+        400
       );
     }
 
-    extractedText = cleanText(extractedText);
+    extractedText =
+      cleanText(extractedText);
 
     if (!extractedText) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
+          success: false,
           error:
             "I could not extract readable text from this file.",
-        }),
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
+        },
+        400
       );
     }
 
-    extractedText = limitText(extractedText);
+    extractedText =
+      limitText(extractedText);
 
-    const client = new OpenAI({
-      apiKey,
-      baseURL: "https://api.groq.com/openai/v1",
-    });
+    console.log(
+      "Extracted text length:",
+      extractedText.length
+    );
+
+    const client =
+      new OpenAI({
+        apiKey,
+        baseURL:
+          "https://api.groq.com/openai/v1",
+      });
 
     const prompt = `
-You are My AI, an intelligent document and data analysis assistant.
+You are My AI, a professional document and data analysis assistant.
 
-The user uploaded:
+The user uploaded this file:
 
 File name: ${file.name}
 File type: ${fileInformation}
 
-User's request:
-${userQuestion}
+The user's request is:
 
-Extracted file content:
+${question}
+
+Here is the extracted content from the file:
+
 -------------------------
 ${extractedText}
 -------------------------
 
-Instructions:
+Answer the user's request using the uploaded file.
 
-1. Answer the user's question using the uploaded file.
-2. Do not invent information that is not present in the file.
-3. If the requested information cannot be found, clearly say that.
-4. For datasets, identify useful patterns, columns, values, trends and anomalies when relevant.
-5. For academic or business documents, explain important points clearly.
-6. If the user asks for a summary, organize it with useful headings and bullet points.
-7. If the user asks a specific question, answer that question first.
+Important rules:
+
+- Use only information available in the supplied file.
+- Do not invent facts.
+- If the requested information is not available, clearly say so.
+- Explain the answer naturally and professionally.
+- Do not use unnecessary Markdown headings.
+- Prefer normal paragraphs and simple bullet points.
+- Use tables only when they genuinely make the information easier to understand.
+- For datasets, identify useful patterns, trends, important values and anomalies when relevant.
+- For academic documents, explain important concepts clearly.
+- For business documents, highlight useful insights and important information.
+- If the user asks for a summary, give a concise but useful summary.
+- Answer the user's specific question first.
 `;
+
+    console.log(
+      "Sending document to Groq..."
+    );
 
     const completion =
       await client.chat.completions.create({
@@ -262,7 +333,7 @@ Instructions:
           {
             role: "system",
             content:
-              "You are a careful file-analysis assistant. Use only the supplied file content.",
+              "You are a careful document analysis assistant. Use only the supplied file content.",
           },
           {
             role: "user",
@@ -273,39 +344,49 @@ Instructions:
       });
 
     const answer =
-      completion.choices[0]?.message?.content ||
-      "I could not generate an answer from this file.";
+      completion.choices?.[0]?.message
+        ?.content;
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        fileName: file.name,
-        fileType: fileInformation,
-        answer,
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
+    if (!answer) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            "Groq returned an empty response.",
         },
-      }
+        500
+      );
+    }
+
+    console.log(
+      "=== FILE ANALYSIS COMPLETE ==="
     );
-  } catch (error) {
-    console.error("File analysis error:", error);
 
-    return new Response(
-      JSON.stringify({
-        error:
-          error instanceof Error
-            ? error.message
-            : "File analysis failed.",
-      }),
+    return jsonResponse({
+      success: true,
+      fileName: file.name,
+      fileType: fileInformation,
+      answer,
+    });
+  } catch (error: any) {
+    console.error(
+      "=== FILE ANALYSIS ERROR ==="
+    );
+
+    console.error(error);
+
+    const errorMessage =
+      error?.error?.message ||
+      error?.message ||
+      "File analysis failed.";
+
+    return jsonResponse(
       {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
+        success: false,
+        error: errorMessage,
+      },
+      500
     );
   }
 }
+
