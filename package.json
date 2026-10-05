@@ -12,7 +12,7 @@
     "mammoth": "^1.11.0",
     "next": "latest",
     "openai": "latest",
-    "pdf-parse": "1.1.1",
+    "pdfjs-dist": "^5.4.149",
     "react": "latest",
     "react-dom": "latest",
     "xlsx": "^0.18.5"
